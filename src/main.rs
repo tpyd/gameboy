@@ -1,3 +1,10 @@
+use minifb::{Key, Window, WindowOptions};
+use std::time::{Duration, Instant};
+use std::thread::sleep;
+
+const WIDTH: usize = 160;
+const HEIGHT: usize = 144;
+
 const ZERO_FLAG_BYTE_POSITION: u8 = 7;
 const SUBTRACT_FLAG_BYTE_POSITION: u8 = 6;
 const HALF_CARRY_FLAG_BYTE_POSITION: u8 = 5;
@@ -97,6 +104,95 @@ impl Registers {
 }
 
 /*
+    Graphic part of the gameboy.
+    The gameboy doesn't actually have a GPU
+*/
+const VRAM_BEGIN: usize = 0x8000;
+const VRAM_END: usize = 0x97FF;
+const VRAM_SIZE: usize = VRAM_END - VRAM_BEGIN + 1;
+
+/*
+    The color of a pixel. Gameboy has four possible colors for each pixel (2 bits per pixel).
+    1 1 => White
+    0 1 => Light gray
+    1 0 => Dark gray
+    0 0 => Black
+*/
+#[derive(Clone, Copy)]
+enum TilePixelValue {
+    Zero,
+    One,
+    Two,
+    Three,
+}
+
+/*
+    A tile is 8x8 pixels.
+    Since each pixel uses 2 bits, the size of one tile is 8*8*2/8 = 16 bytes
+*/
+type Tile = [[TilePixelValue; 8]; 8];
+fn empty_tile() -> Tile {
+    [[TilePixelValue::Zero; 8]; 8]
+}
+
+struct GPU {
+    vram: [u8; VRAM_SIZE],
+    tile_set: [Tile; 384],
+}
+
+impl GPU {
+    fn read_vram(&self, address: usize) -> u8 {
+        self.vram[address]
+    }
+
+    // Writing to vram also manages tile sets
+    fn write_vram(&mut self, address: usize, value: u8) {
+        self.vram[address] = value;
+
+        // Return if the address is outside vram
+        if address >= 0x1800 { // TODO change to VRAM_SIZE?
+            return
+        }
+
+        // Tile rows are encoded such that the first byte is on the even address
+        // ANDing with 0xFFFE effectively rounds down to an even address
+        let normalized_address = address & 0xFFFE;
+
+        // Get the two bytes containing the tile row
+        let byte1 = self.vram[normalized_address];
+        let byte2 = self.vram[normalized_address + 1]; // TODO check if wrapping_add() is better
+
+        // One tile is 8x8 pixels. Every pixel is represented by 2 bits (4 colors).
+        // 8*2 = 16bits per row, which is 2 bytes. One tile is 8*2 = 16bytes in size
+        let tile_address = address / 16;
+        let row_address = (address % 16) / 2;
+
+        // Loop each row
+        for pixel_address in 0..8 {
+            // Create a mask to extract a single bit from each of the bytes.
+            // This is done since pixels in one tile row is encoded to take one bit from each byte
+            // Example:
+            // 1 1 0 1 0 0 1 1 byte1
+            // 1 0 0 1 1 1 0 1 byte2
+            // 3 1 0 3 2 2 1 3 Result colors for the row
+            let mask = 1 << (7 - pixel_address);
+            let lsb = byte1 & mask;
+            let msb = byte2 & mask;
+
+            // Check the two bits of both bytes to determine the color of the pixel
+            let value = match (lsb != 0, msb != 0) {
+                (true, true) => TilePixelValue::Three,
+                (false, true) => TilePixelValue::Two,
+                (true, false) => TilePixelValue::One,
+                (false, false) => TilePixelValue::Zero,
+            };
+
+            self.tile_set[tile_address][row_address][pixel_address] = value;
+        }
+    }
+}
+
+/*
     All CPU instructions for LR35902
 */
 enum Instruction {
@@ -138,6 +234,9 @@ enum Instruction {
     // Function call
     CALL(JumpTest),
     RET(JumpTest),
+    // Other
+    NOP,
+    HALT,
 }
 
 impl Instruction {
@@ -206,20 +305,39 @@ enum StackTarget {
 
 /*
     The memory of the gameboy
-    0x0000 - 0x00FF: bootstrap
+    0x0000 - 0x00FF: bootstrap, turns into interrupt table after boot
     0x0100 - 0x3FFF: cartridge
+
+    0x8000 - 0x97FF: tile data
+        0x8000 - 0x8FFF tile set 1
+        0x8800 - 0x8FFF shared tile set
+        0x8800 - 0x97FF tile set 2
 */
 struct MemoryBus {
     memory: [u8; 0xFFFF],
+    gpu: GPU,
 }
 
 impl MemoryBus {
     fn read_byte(&self, address: u16) -> u8 {
-        self.memory[address as usize]
+        let address = address as usize;
+        match address {
+            // Redirect vram address to GPU
+            VRAM_BEGIN ..= VRAM_END => {
+                self.gpu.read_vram(address - VRAM_BEGIN)
+            },
+            _ => self.memory[address]
+        }
     }
 
     fn write_byte(&mut self, address: u16, value: u8) {
-        self.memory[address as usize] = value;
+        let address = address as usize;
+        match address {
+            VRAM_BEGIN ..= VRAM_END => {
+                self.gpu.write_vram(address - VRAM_BEGIN)
+            },
+            _ => self.memory[address as usize] = value;
+        }
     }
 }
 
@@ -231,6 +349,7 @@ struct CPU {
     pc: u16, // Program counter, tells which instruction its currently running
     sp: u16, // Stack pointer, points to the top of the stack
     bus: MemoryBus,
+    is_halted: bool,
 }
 
 impl CPU {
@@ -259,6 +378,10 @@ impl CPU {
         NOTE: pc increments should use wrapping_add()
     */
     fn execute(&mut self, instruction: Instruction) -> u16 {
+        if self.is_halted {
+            return self.pc
+        }
+
         match instruction {
             Instruction::ADD(target) => self.add(target),
             Instruction::JP(test) => self.jump(test),
@@ -267,6 +390,8 @@ impl CPU {
             Instruction::POP(target) => self.pop(target),
             Instruction::CALL(test) => self.call(test),
             Instruction::RET(test) => self.ret(test),
+            Instruction::NOP => self.pc.wrapping_add(1),
+            Instruction::HALT => { self.is_halted = true; self.pc },
             _ => {panic!("Instruction not found")} // TODO add more instructions
         }
     }
@@ -472,6 +597,44 @@ impl CPU {
     }
 }
 
+fn run(mut cpu: CPU, mut window: Window) {
+    let mut window_buffer = [0; WIDTH * HEIGHT];
+    let mut cycles_elapsed_in_frame = 0usize;
+    let mut now = Instant::now();
+
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        // Check how much time (in nanoseconds) has passed
+        let time_delta = now.elapsed().subsec_nanos();
+        now = Instant::now();
+
+        cycles_elapsed_in_frame += cpu.run(time_delta); // Gameboy knows how many times to call step in this time
+        // If the gameboy should update the screen
+        if cycles_elapsed_in_frame >= ONE_FRAME_IN_CYCLES { // 30 times per second, should update
+            for (i, pixel) in cpu.pixel_buffer().enumerate() {
+                window_buffer[i] = pixel
+            }
+            window.update_with_buffer(&window_buffer, WIDTH, HEIGHT);
+            cycles_elapsed_in_frame = 0;
+        } else {
+            sleep(Duration::from_nanos(2))
+        }
+    }
+}
+
 fn main() {
-    println!("Hello, world!");
+    let mut window = Window::new(
+        "Gameboy",
+        WIDTH,
+        HEIGHT,
+        WindowOptions::default()
+    )
+    .unwrap_or_else(|e| {
+        panic!("{}", e);
+    });
+
+    window.limit_update_rate(Some(std::time::Duration::from_micros(8300)));
+
+    let mut cpu = CPU{};
+
+    run(cpu, window);
 }
