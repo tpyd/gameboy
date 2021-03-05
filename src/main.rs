@@ -66,6 +66,26 @@ struct Registers {
 }
 
 impl Registers {
+    fn new() -> Self {
+        let mut reg = Registers {
+            a: 0x00,
+            b: 0x00, 
+            c: 0x00, 
+            d: 0x00, 
+            e: 0x00, 
+            f: FlagsRegister::from(0x00), 
+            h: 0x00, 
+            l: 0x00, 
+        };
+
+        // See https://gbdev.io/pandocs/#power-up-sequence
+        reg.set_af(0x01b0);
+        reg.set_bc(0x0013);
+        reg.set_de(0x00d8);
+        reg.set_hl(0x014d);
+        reg
+    }
+
     fn get_af(&self) -> u16 {
         (self.a as u16) << 8 | u8::from(self.f) as u16
     }
@@ -141,6 +161,13 @@ struct GPU {
 }
 
 impl GPU {
+    fn new() -> Self {
+        GPU {
+            vram: [0; VRAM_SIZE],
+            tile_set: [empty_tile(); 384],
+        }
+    }
+
     fn read_vram(&self, address: usize) -> u8 {
         self.vram[address]
     }
@@ -149,7 +176,7 @@ impl GPU {
     fn write_vram(&mut self, address: usize, value: u8) {
         self.vram[address] = value;
 
-        // Return if the address is outside vram
+        // Return if the address is outside vram, don't need to update tiles
         if address >= 0x1800 { // TODO change to VRAM_SIZE?
             return
         }
@@ -239,31 +266,6 @@ enum Instruction {
     HALT,
 }
 
-impl Instruction {
-    fn from_byte(byte: u8, prefixed: bool) -> Option<Instruction> {
-        if prefixed {
-            Instruction::from_byte_prefixed(byte)
-        } else {
-            Instruction::from_byte_not_prefixed(byte)
-        }
-    }
-
-    fn from_byte_prefixed(byte: u8) -> Option<Instruction> {
-        match byte {
-            0x00 => Some(Instruction::RLC(PrefixTarget::B))
-            _ => None // TODO add all prefix instructions
-        }
-    }
-
-    fn from_byte_not_prefixed(byte: u8) -> Option<Instruction> {
-        match byte {
-            0x02 => Some(Instruction::INC(IncDecTarget::BC)),
-            0x13 => Some(Instruction::INC(IncDecTarget::DE)),
-            _ => None // TODO add all instructions
-        }
-    }
-}
-
 enum ArithmeticTarget {
     A, B, C, D, E, H, L,
 }
@@ -284,8 +286,17 @@ enum LoadByteSource {
     A, B, C, D, E, H, L, D8, HLI,
 }
 
+enum LoadWordTarget {
+    BC, 
+}
+
+enum LoadWordSource {
+    A, B, C, D, E, H, L, D8, HLI,
+}
+
 enum LoadType {
     Byte(LoadByteTarget, LoadByteSource),
+    Word(LoadWordTarget, LoadWordSource),
     /*
     TODO add these instructions:
     Word - Byte except 16-bit values
@@ -301,6 +312,35 @@ enum StackTarget {
     BC,
     DE,
     HL,
+}
+
+impl Instruction {
+    // Converts a byte into an instruction
+    // Full opcode table at https://www.pastraiser.com/cpu/gameboy/gameboy_opcodes.html
+    fn from_byte(byte: u8, prefixed: bool) -> Option<Instruction> {
+        if prefixed {
+            Instruction::from_byte_prefixed(byte)
+        } else {
+            Instruction::from_byte_not_prefixed(byte)
+        }
+    }
+
+    // TODO should return how many cycles it requires as well as the instruction
+    fn from_byte_prefixed(byte: u8) -> Option<Instruction> {
+        match byte {
+            0x00 => Some(Instruction::NOP),
+            0x01 => Some(Instruction::LD)
+            _ => None // TODO add all prefix instructions
+        }
+    }
+
+    fn from_byte_not_prefixed(byte: u8) -> Option<Instruction> {
+        match byte {
+            0x02 => Some(Instruction::INC(IncDecTarget::BC)),
+            0x13 => Some(Instruction::INC(IncDecTarget::DE)),
+            _ => None // TODO add all instructions
+        }
+    }
 }
 
 /*
@@ -319,6 +359,37 @@ struct MemoryBus {
 }
 
 impl MemoryBus {
+    fn new() -> Self {
+        let mem = MemoryBus {
+            memory: [0; 0xFFFF],
+            gpu: GPU::new(),
+        };
+
+        // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
+        // Memory defaults to 0 so some entries are removed
+        mem.write_byte(0xFF10, 0x80); // NR10
+        mem.write_byte(0xFF11, 0xBF); // NR11
+        mem.write_byte(0xFF12, 0xF3); // NR12
+        mem.write_byte(0xFF14, 0xBF); // NR14
+        mem.write_byte(0xFF16, 0x3F); // NR21
+        mem.write_byte(0xFF19, 0xBF); // NR24
+        mem.write_byte(0xFF1A, 0x7F); // NR30
+        mem.write_byte(0xFF1B, 0xFF); // NR31
+        mem.write_byte(0xFF1C, 0x9F); // NR32
+        mem.write_byte(0xFF1E, 0xBF); // NR34
+        mem.write_byte(0xFF20, 0xFF); // NR41
+        mem.write_byte(0xFF23, 0xBF); // NR44
+        mem.write_byte(0xFF24, 0x77); // NR50
+        mem.write_byte(0xFF25, 0xF3); // NR51
+        //[$FF26] = $F1-GB, $F0-SGB ; NR52
+        mem.write_byte(0xFF40, 0x91); // LCDC
+        mem.write_byte(0xFF47, 0xFC); // BGP
+        mem.write_byte(0xFF48, 0xFF); // OBP0
+        mem.write_byte(0xFF49, 0xFF); // OBP1
+
+        mem
+    }
+
     fn read_byte(&self, address: u16) -> u8 {
         let address = address as usize;
         match address {
@@ -334,10 +405,10 @@ impl MemoryBus {
         let address = address as usize;
         match address {
             VRAM_BEGIN ..= VRAM_END => {
-                self.gpu.write_vram(address - VRAM_BEGIN)
+                self.gpu.write_vram(address - VRAM_BEGIN, value)
             },
-            _ => self.memory[address as usize] = value;
-        }
+            _ => self.memory[address as usize] = value,
+        };
     }
 }
 
@@ -353,6 +424,22 @@ struct CPU {
 }
 
 impl CPU {
+    fn new() -> Self {
+        CPU {
+            registers: Registers::new(),
+            pc: 0x0000,
+            sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
+            bus: MemoryBus::new(),
+            is_halted: false,
+        }
+    }
+
+    // Runs a specified amount of cycles depending on the time that passed since last frame.
+    // Returns the number of cycles run
+    fn run(&self, time_delta: u32) -> u32 {
+
+    }
+
     // Executes one CPU cycle. Reads and executes an instruction from the position of the pc and updates the pc
     fn step(&mut self) {
         let mut instruction_byte = self.bus.read_byte(self.pc);
