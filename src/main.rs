@@ -12,14 +12,22 @@ const CARRY_FLAG_BYTE_POSITION: u8 = 4;
 
 /*
     FlagsRegister is an abstraction of the f register on the CPU.
-    bits 0-3 are unused and bits 4-7 are described by constants.
+    bits 0-3 are unused and bits 4-7 are set following these rules:
+
+    z, set if an operation is zero
+    n, if the previous instruction was a subtraction
+    h, if the lower 4 bits resulted in an overflow. (0xF)
+    c, set if   8-bit addition is larger than 0xFF (8-bit overflow)
+                16-bit larger than 0xFFFF (16-bit overflow)
+                Subtraction or comparison lower than zero
+                When rotate/shift operation shifts out a "1" bit
 */
 #[derive(Clone, Copy)]
 struct FlagsRegister {
-    zero: bool,
-    subtract: bool,
-    half_carry: bool,
-    carry: bool,
+    zero: bool,         // z
+    subtract: bool,     // n
+    half_carry: bool,   // h
+    carry: bool,        // c
 }
 
 // Implement methods for easy conversion between u8 and FlagsRegister
@@ -223,51 +231,42 @@ impl GPU {
     All CPU instructions for LR35902
 */
 enum Instruction {
-    ADD(ArithmeticTarget),
+    // Arithmetic instructions
+    ADD(ArithmeticTarget),  // Add target to register A
     ADDHL(ArithmeticTarget),
-    SUB(ArithmeticTarget),
-    SBC,
-    AND,
-    OR,
-    XOR,
-    CP,
-    INC,
-    DEC,
-    CCF,
-    SCF,
-    RRA,
-    RLA,
-    RRCA,
-    RRLA,
-    CPL,
-    BIT,
-    RESET,
-    SET,
-    SRL,
-    RR,
-    RL,
-    RRC,
-    RLC,
-    SRA,
-    SLA,
-    SWAP,
+    SUB(ArithmeticTarget),  // Subtract target from register A
+    INC(IncDecTarget),  // Increment target
+    DEC(IncDecTarget),  // Decrement target
+
+    // Bit shift instructions
+    RLA,  // Rotate A left through carry
+    RLCA, // Rotate A left
+    RRA,  // Rotate A right through carry
+    RRCA, // Rotate A right
+
     // Jump instructions
     JP(JumpTest),
+
     // Memory instructions
     LD(LoadType),
+
     // Stack instructions
     PUSH(StackTarget),
     POP(StackTarget),
+
     // Function call
     CALL(JumpTest),
     RET(JumpTest),
+
     // Other
     NOP,
     HALT,
+    STOP
 }
 
+// Targets for arithmetic operations, both 8-bit and 16-bit
 enum ArithmeticTarget {
-    A, B, C, D, E, H, L,
+    A, B, C, D, E, H, L, BC, DE, HL, SP, HLI, // HLI means value at the address pointed to by HL registers
 }
 
 enum JumpTest {
@@ -279,32 +278,32 @@ enum JumpTest {
 }
 
 enum LoadByteTarget {
-    A, B, C, D, E, H, L, HLI,
+    A, B, C, D, E, H, L, HLI, 
 }
 
 enum LoadByteSource {
-    A, B, C, D, E, H, L, D8, HLI,
+    A, B, C, D, E, H, L, D8, HLI, // D8 means next byte
 }
 
 enum LoadWordTarget {
-    BC, 
+    BC, DE, HL, SP, D16, // D16 means next word
 }
 
 enum LoadWordSource {
-    A, B, C, D, E, H, L, D8, HLI,
+    BC, DE, HL, SP, D16,
+}
+
+enum LoadMemoryLocation {
+    BC, DE, HLpostinc, HLpredec, 
 }
 
 enum LoadType {
     Byte(LoadByteTarget, LoadByteSource),
     Word(LoadWordTarget, LoadWordSource),
-    /*
-    TODO add these instructions:
-    Word - Byte except 16-bit values
-    AFromIndirect
-    IndirectFromA
-    AFromByteAddress
-    ByteAddressFromA
-    */
+    AFromIndirect(LoadMemoryLocation), // Load memory location into A
+    IndirectFromA(LoadMemoryLocation), // Load A into memory location
+    //AFromByteAddress 
+    //ByteAddressFromA
 }
 
 enum StackTarget {
@@ -317,30 +316,172 @@ enum StackTarget {
 impl Instruction {
     // Converts a byte into an instruction
     // Full opcode table at https://www.pastraiser.com/cpu/gameboy/gameboy_opcodes.html
-    fn from_byte(byte: u8, prefixed: bool) -> Option<Instruction> {
+    fn from_byte(byte: u8, prefixed: bool) -> Option<(Instruction, usize, usize)> {
         if prefixed {
             Instruction::from_byte_prefixed(byte)
         } else {
             Instruction::from_byte_not_prefixed(byte)
         }
     }
-
-    // TODO should return how many cycles it requires as well as the instruction
-    fn from_byte_prefixed(byte: u8) -> Option<Instruction> {
+    
+    fn from_byte_not_prefixed(byte: u8) -> Option<(Instruction, usize, usize)> {
         match byte {
-            0x00 => Some(Instruction::NOP),
-            0x01 => Some(Instruction::LD)
-            _ => None // TODO add all prefix instructions
-        }
-    }
+            0x00 => Some((Instruction::NOP, 1, 4)),
+            0x10 => Some((Instruction::STOP, 2, 4)),
 
-    fn from_byte_not_prefixed(byte: u8) -> Option<Instruction> {
-        match byte {
-            0x02 => Some(Instruction::INC(IncDecTarget::BC)),
+            // Load instructions 8-bit
+            0x02 => Some((Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::BC)), 1, 8)),
+            0x12 => Some((Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::DE)), 1, 8)),
+            0x22 => Some((Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::HLpostinc)), 1, 8)),
+            0x32 => Some((Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::HLpredec)), 1, 8)),
+
+            0x06 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::D8)), 2, 8)),
+            0x16 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::D8)), 2, 8)),
+            0x26 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::D8)), 2, 8)),
+            0x36 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::D8)), 2, 12)),
+
+            0x0A => Some((Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::BC)), 1, 8)),
+            0x1A => Some((Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::DE)), 1, 8)),
+            0x2A => Some((Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::HLpostinc)), 1, 8)),
+            0x3A => Some((Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::HLpredec)), 1, 8)),
+
+            0x0E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::D8)), 2, 8)),
+            0x1E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::D8)), 2, 8)),
+            0x2E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::D8)), 2, 8)),
+            0x3E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::D8)), 2, 8)),
+
+            0x40 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::B)), 1, 4)),
+            0x41 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::C)), 1, 4)),
+            0x42 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::D)), 1, 4)),
+            0x43 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::E)), 1, 4)),
+            0x44 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::H)), 1, 4)),
+            0x45 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::L)), 1, 4)),
+            0x46 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::HLI)), 1, 8)),
+            0x47 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::A)), 1, 4)),
+            0x48 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::B)), 1, 4)),
+            0x49 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::C)), 1, 4)),
+            0x4A => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::D)), 1, 4)),
+            0x4B => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::E)), 1, 4)),
+            0x4C => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::H)), 1, 4)),
+            0x4D => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::L)), 1, 4)),
+            0x4E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::HLI)), 1, 8)),
+            0x4F => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::A)), 1, 4)),
+
+            0x50 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::B)), 1, 4)),
+            0x51 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::C)), 1, 4)),
+            0x52 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::D)), 1, 4)),
+            0x53 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::E)), 1, 4)),
+            0x54 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::H)), 1, 4)),
+            0x55 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::L)), 1, 4)),
+            0x56 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::HLI)), 1, 8)),
+            0x57 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::A)), 1, 4)),
+            0x58 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::B)), 1, 4)),
+            0x59 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::C)), 1, 4)),
+            0x5A => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::D)), 1, 4)),
+            0x5B => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::E)), 1, 4)),
+            0x5C => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::H)), 1, 4)),
+            0x5D => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::L)), 1, 4)),
+            0x5E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::HLI)), 1, 8)),
+            0x5F => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::A)), 1, 4)),
+
+            0x60 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::B)), 1, 4)),
+            0x61 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::C)), 1, 4)),
+            0x62 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::D)), 1, 4)),
+            0x63 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::E)), 1, 4)),
+            0x64 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::H)), 1, 4)),
+            0x65 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::L)), 1, 4)),
+            0x66 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::HLI)), 1, 8)),
+            0x67 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::H, LoadByteSource::A)), 1, 4)),
+            0x68 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::B)), 1, 4)),
+            0x69 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::C)), 1, 4)),
+            0x6A => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::D)), 1, 4)),
+            0x6B => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::E)), 1, 4)),
+            0x6C => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::H)), 1, 4)),
+            0x6D => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::L)), 1, 4)),
+            0x6E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::HLI)), 1, 8)),
+            0x6F => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::L, LoadByteSource::A)), 1, 4)),
+
+            0x60 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::B)), 1, 8)),
+            0x61 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::C)), 1, 8)),
+            0x62 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::D)), 1, 8)),
+            0x63 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::E)), 1, 8)),
+            0x68 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::H)), 1, 8)),
+            0x65 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::L)), 1, 8)),
+            0x66 => Some((Instruction::HALT, 1, 4)),
+            0x67 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::A)), 1, 8)),
+            0x68 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::B)), 1, 4)),
+            0x69 => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::C)), 1, 4)),
+            0x6A => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::D)), 1, 4)),
+            0x6B => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::E)), 1, 4)),
+            0x6C => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::H)), 1, 4)),
+            0x6D => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::L)), 1, 4)),
+            0x6E => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::HLI)), 1, 8)),
+            0x6F => Some((Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::A)), 1, 4)),
+
+            // Load instructions 16-bit
+            0x01 => Some((Instruction::LD(LoadType::Word(LoadWordTarget::BC, LoadWordSource::D16)), 3, 12)),
+            0x11 => Some((Instruction::LD(LoadType::Word(LoadWordTarget::DE, LoadWordSource::D16)), 3, 12)),
+            0x21 => Some((Instruction::LD(LoadType::Word(LoadWordTarget::HL, LoadWordSource::D16)), 3, 12)),
+            0x31 => Some((Instruction::LD(LoadType::Word(LoadWordTarget::SP, LoadWordSource::D16)), 3, 12)),
+            0x08 => Some((Instruction::LD(LoadType::Word(LoadWordTarget::D16, LoadWordSource::SP)), 3, 20)),
+            0xF9 => Some((Instruction::LD(LoadType::Word(LoadWordTarget::SP, LoadWordSource::HL)), 1, 8)),
+
+            // Increment and decrement instructions
+            0x04 => Some((Instruction::INC(ArithmeticTarget::B), 1, 4)),
+            0x14 => Some((Instruction::INC(ArithmeticTarget::D), 1, 4)),
+            0x24 => Some((Instruction::INC(ArithmeticTarget::H), 1, 4)),
+            0x34 => Some((Instruction::INC(ArithmeticTarget::HLI), 1, 12)),
+            
+            0x0C => Some((Instruction::INC(ArithmeticTarget::C), 1, 4)),
+            0x1C => Some((Instruction::INC(ArithmeticTarget::E), 1, 4)),
+            0x2C => Some((Instruction::INC(ArithmeticTarget::L), 1, 4)),
+            0x3C => Some((Instruction::INC(ArithmeticTarget::A), 1, 4)),
+            
+            0x05 => Some((Instruction::DEC(ArithmeticTarget::B), 1, 4)),
+            0x15 => Some((Instruction::DEC(ArithmeticTarget::D), 1, 4)),
+            0x25 => Some((Instruction::DEC(ArithmeticTarget::H), 1, 4)),
+            0x35 => Some((Instruction::DEC(ArithmeticTarget::HLI), 1, 12)),
+            
+            0x0D => Some((Instruction::DEC(ArithmeticTarget::C), 1, 4)),
+            0x1D => Some((Instruction::DEC(ArithmeticTarget::E), 1, 4)),
+            0x2D => Some((Instruction::DEC(ArithmeticTarget::L), 1, 4)),
+            0x3D => Some((Instruction::DEC(ArithmeticTarget::A), 1, 4)),
+            
+            0x03 => Some((Instruction::INC(ArithmeticTarget::BC), 1, 8)),
+            0x13 => Some((Instruction::INC(ArithmeticTarget::DE), 1, 8)),
+            0x23 => Some((Instruction::INC(ArithmeticTarget::HL), 1, 8)),
+            0x33 => Some((Instruction::INC(ArithmeticTarget::SP), 1, 8)),
+            
+            0x0B => Some((Instruction::DEC(ArithmeticTarget::BC), 1, 8)),
+            0x1B => Some((Instruction::DEC(ArithmeticTarget::DE), 1, 8)),
+            0x2B => Some((Instruction::DEC(ArithmeticTarget::HL), 1, 8)),
+            0x3B => Some((Instruction::DEC(ArithmeticTarget::SP), 1, 8)),
+
+            // Bit shift instructions
+            0x07 => Some((Instruction::RLCA, 1, 4)),
+            0x0F => Some((Instruction::RRCA, 1, 4)),
+            0x17 => Some((Instruction::RLA, 1, 4)),
+            0x1F => Some((Instruction::RRA, 1, 4))
+
+
+
+            0x09 => Some((Instruction::ADD(ArithmeticTarget::BC), 1, 8)),
+            
+
+            
             0x13 => Some(Instruction::INC(IncDecTarget::DE)),
             _ => None // TODO add all instructions
         }
     }
+
+    // Prefixed instructions are instructions starting with 0xCB
+    fn from_byte_prefixed(byte: u8) -> Option<(Instruction, usize, usize)> {
+        match byte {
+            
+            _ => None // TODO add all prefix instructions
+        }
+    }
+
 }
 
 /*
@@ -367,6 +508,7 @@ impl MemoryBus {
 
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
         // Memory defaults to 0 so some entries are removed
+        // TODO read these from file along with the bootrom
         mem.write_byte(0xFF10, 0x80); // NR10
         mem.write_byte(0xFF11, 0xBF); // NR11
         mem.write_byte(0xFF12, 0xF3); // NR12
@@ -436,26 +578,37 @@ impl CPU {
 
     // Runs a specified amount of cycles depending on the time that passed since last frame.
     // Returns the number of cycles run
-    fn run(&self, time_delta: u32) -> u32 {
+    fn run(&self, time_delta: u32) -> usize {
+        // Calculate how many times to run step depending on time_delta
+        let mut cycles = 0;
+        for i in 0.. {
+            cycles += self.step()
+        }
 
+        // Return how many cycles have passed in those steps
+        cycles
     }
 
     // Executes one CPU cycle. Reads and executes an instruction from the position of the pc and updates the pc
-    fn step(&mut self) {
+    fn step(&mut self) -> usize {
         let mut instruction_byte = self.bus.read_byte(self.pc);
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
             instruction_byte = self.bus.read_byte(self.pc + 1); // TODO add wrap add and see if pc needs to be incremented
         }
 
-        let next_pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed) {
-            self.execute(instruction)
+        // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
+        let (size, cycles) = if let Some((instruction, size, cycles)) = Instruction::from_byte(instruction_byte, prefixed) {
+            self.execute(instruction);
+            (size, cycles)
         } else {
             let description = format!("0x{}{:x}", if prefixed { "cb" } else { "" }, instruction_byte);
             panic!("Unknown instruction found for: {}", description);
         };
 
-        self.pc = next_pc;
+        // Increment pc by the size of the instruction
+        self.pc.wrapping_add(size as u16);
+        cycles
     }
 
     /*
