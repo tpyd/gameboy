@@ -250,6 +250,17 @@ enum Instruction {
     RLCA, // Rotate A left
     RRA,  // Rotate A right through carry
     RRCA, // Rotate A right
+    RLC(ArithmeticTarget),  // Rotate register left
+    RRC(ArithmeticTarget),  // Rotate register right
+    RL(ArithmeticTarget),   // Rotate register left through carry
+    RR(ArithmeticTarget),   // Rotate register right through carry
+    SLA(ArithmeticTarget),  // Shift arithmetic register left
+    SRA(ArithmeticTarget),  // Shift arithmetic register right
+    SWAP(ArithmeticTarget), // Swap upper 4 bits and lower 4 bits
+    SRL(ArithmeticTarget),  // Shift logic register right
+    BIT(u8, ArithmeticTarget),  // Test bit n at given register and set zero flag if not set
+    RES(u8, ArithmeticTarget),  // Set bit n at given register to 0
+    SET(u8, ArithmeticTarget),  // Set bit n at given register to 1
 
     // Jump instructions
     JP(JumpTest),
@@ -659,7 +670,276 @@ impl Instruction {
     // Prefixed instructions are instructions starting with 0xCB
     fn from_byte_prefixed(byte: u8) -> Option<(Instruction, usize, usize)> {
         match byte {
+            0x00 => Some((Instruction::RLC(ArithmeticTarget::B), 2, 8)),
+            0x01 => Some((Instruction::RLC(ArithmeticTarget::C), 2, 8)),
+            0x02 => Some((Instruction::RLC(ArithmeticTarget::D), 2, 8)),
+            0x03 => Some((Instruction::RLC(ArithmeticTarget::E), 2, 8)),
+            0x04 => Some((Instruction::RLC(ArithmeticTarget::H), 2, 8)),
+            0x05 => Some((Instruction::RLC(ArithmeticTarget::L), 2, 8)),
+            0x06 => Some((Instruction::RLC(ArithmeticTarget::HLI), 2, 16)),
+            0x07 => Some((Instruction::RLC(ArithmeticTarget::A), 2, 8)),
+
+            0x08 => Some((Instruction::RRC(ArithmeticTarget::B), 2, 8)),
+            0x09 => Some((Instruction::RRC(ArithmeticTarget::C), 2, 8)),
+            0x0A => Some((Instruction::RRC(ArithmeticTarget::D), 2, 8)),
+            0x0B => Some((Instruction::RRC(ArithmeticTarget::E), 2, 8)),
+            0x0C => Some((Instruction::RRC(ArithmeticTarget::H), 2, 8)),
+            0x0D => Some((Instruction::RRC(ArithmeticTarget::L), 2, 8)),
+            0x0E => Some((Instruction::RRC(ArithmeticTarget::HLI), 2, 16)),
+            0x0F => Some((Instruction::RRC(ArithmeticTarget::A), 2, 8)),
+
+            0x10 => Some((Instruction::RL(ArithmeticTarget::B), 2, 8)),
+            0x11 => Some((Instruction::RL(ArithmeticTarget::C), 2, 8)),
+            0x12 => Some((Instruction::RL(ArithmeticTarget::D), 2, 8)),
+            0x13 => Some((Instruction::RL(ArithmeticTarget::E), 2, 8)),
+            0x14 => Some((Instruction::RL(ArithmeticTarget::H), 2, 8)),
+            0x15 => Some((Instruction::RL(ArithmeticTarget::L), 2, 8)),
+            0x16 => Some((Instruction::RL(ArithmeticTarget::HLI), 2, 16)),
+            0x17 => Some((Instruction::RL(ArithmeticTarget::A), 2, 8)),
+
+            0x18 => Some((Instruction::RR(ArithmeticTarget::B), 2, 8)),
+            0x19 => Some((Instruction::RR(ArithmeticTarget::C), 2, 8)),
+            0x1A => Some((Instruction::RR(ArithmeticTarget::D), 2, 8)),
+            0x1B => Some((Instruction::RR(ArithmeticTarget::E), 2, 8)),
+            0x1C => Some((Instruction::RR(ArithmeticTarget::H), 2, 8)),
+            0x1D => Some((Instruction::RR(ArithmeticTarget::L), 2, 8)),
+            0x1E => Some((Instruction::RR(ArithmeticTarget::HLI), 2, 16)),
+            0x1F => Some((Instruction::RR(ArithmeticTarget::A), 2, 8)),
+
+            0x20 => Some((Instruction::SLA(ArithmeticTarget::B), 2, 8)),
+            0x21 => Some((Instruction::SLA(ArithmeticTarget::C), 2, 8)),
+            0x22 => Some((Instruction::SLA(ArithmeticTarget::D), 2, 8)),
+            0x23 => Some((Instruction::SLA(ArithmeticTarget::E), 2, 8)),
+            0x24 => Some((Instruction::SLA(ArithmeticTarget::H), 2, 8)),
+            0x25 => Some((Instruction::SLA(ArithmeticTarget::L), 2, 8)),
+            0x26 => Some((Instruction::SLA(ArithmeticTarget::HLI), 2, 16)),
+            0x27 => Some((Instruction::SLA(ArithmeticTarget::A), 2, 8)),
+
+            0x28 => Some((Instruction::SRA(ArithmeticTarget::B), 2, 8)),
+            0x29 => Some((Instruction::SRA(ArithmeticTarget::C), 2, 8)),
+            0x2A => Some((Instruction::SRA(ArithmeticTarget::D), 2, 8)),
+            0x2B => Some((Instruction::SRA(ArithmeticTarget::E), 2, 8)),
+            0x2C => Some((Instruction::SRA(ArithmeticTarget::H), 2, 8)),
+            0x2D => Some((Instruction::SRA(ArithmeticTarget::L), 2, 8)),
+            0x2E => Some((Instruction::SRA(ArithmeticTarget::HLI), 2, 16)),
+            0x2F => Some((Instruction::SRA(ArithmeticTarget::A), 2, 8)),
             
+            0x30 => Some((Instruction::SWAP(ArithmeticTarget::B), 2, 8)),
+            0x31 => Some((Instruction::SWAP(ArithmeticTarget::C), 2, 8)),
+            0x32 => Some((Instruction::SWAP(ArithmeticTarget::D), 2, 8)),
+            0x33 => Some((Instruction::SWAP(ArithmeticTarget::E), 2, 8)),
+            0x34 => Some((Instruction::SWAP(ArithmeticTarget::H), 2, 8)),
+            0x35 => Some((Instruction::SWAP(ArithmeticTarget::L), 2, 8)),
+            0x36 => Some((Instruction::SWAP(ArithmeticTarget::HLI), 2, 16)),
+            0x37 => Some((Instruction::SWAP(ArithmeticTarget::A), 2, 8)),
+
+            0x38 => Some((Instruction::SRL(ArithmeticTarget::B), 2, 8)),
+            0x39 => Some((Instruction::SRL(ArithmeticTarget::C), 2, 8)),
+            0x3A => Some((Instruction::SRL(ArithmeticTarget::D), 2, 8)),
+            0x3B => Some((Instruction::SRL(ArithmeticTarget::E), 2, 8)),
+            0x3C => Some((Instruction::SRL(ArithmeticTarget::H), 2, 8)),
+            0x3D => Some((Instruction::SRL(ArithmeticTarget::L), 2, 8)),
+            0x3E => Some((Instruction::SRL(ArithmeticTarget::HLI), 2, 16)),
+            0x3F => Some((Instruction::SRL(ArithmeticTarget::A), 2, 8)),
+
+            // Bit instructions
+            0x40 => Some((Instruction::BIT(0, ArithmeticTarget::B), 2, 8)),
+            0x41 => Some((Instruction::BIT(0, ArithmeticTarget::C), 2, 8)),
+            0x42 => Some((Instruction::BIT(0, ArithmeticTarget::D), 2, 8)),
+            0x43 => Some((Instruction::BIT(0, ArithmeticTarget::E), 2, 8)),
+            0x44 => Some((Instruction::BIT(0, ArithmeticTarget::H), 2, 8)),
+            0x45 => Some((Instruction::BIT(0, ArithmeticTarget::L), 2, 8)),
+            0x46 => Some((Instruction::BIT(0, ArithmeticTarget::HLI), 2, 12)),
+            0x47 => Some((Instruction::BIT(0, ArithmeticTarget::A), 2, 8)),
+            0x48 => Some((Instruction::BIT(1, ArithmeticTarget::B), 2, 8)),
+            0x49 => Some((Instruction::BIT(1, ArithmeticTarget::C), 2, 8)),
+            0x4A => Some((Instruction::BIT(1, ArithmeticTarget::D), 2, 8)),
+            0x4B => Some((Instruction::BIT(1, ArithmeticTarget::E), 2, 8)),
+            0x4C => Some((Instruction::BIT(1, ArithmeticTarget::H), 2, 8)),
+            0x4D => Some((Instruction::BIT(1, ArithmeticTarget::L), 2, 8)),
+            0x4E => Some((Instruction::BIT(1, ArithmeticTarget::HLI), 2, 12)),
+            0x4F => Some((Instruction::BIT(1, ArithmeticTarget::A), 2, 8)),
+            0x50 => Some((Instruction::BIT(2, ArithmeticTarget::B), 2, 8)),
+            0x51 => Some((Instruction::BIT(2, ArithmeticTarget::C), 2, 8)),
+            0x52 => Some((Instruction::BIT(2, ArithmeticTarget::D), 2, 8)),
+            0x53 => Some((Instruction::BIT(2, ArithmeticTarget::E), 2, 8)),
+            0x54 => Some((Instruction::BIT(2, ArithmeticTarget::H), 2, 8)),
+            0x55 => Some((Instruction::BIT(2, ArithmeticTarget::L), 2, 8)),
+            0x56 => Some((Instruction::BIT(2, ArithmeticTarget::HLI), 2, 12)),
+            0x57 => Some((Instruction::BIT(2, ArithmeticTarget::A), 2, 8)),
+            0x58 => Some((Instruction::BIT(3, ArithmeticTarget::B), 2, 8)),
+            0x59 => Some((Instruction::BIT(3, ArithmeticTarget::C), 2, 8)),
+            0x5A => Some((Instruction::BIT(3, ArithmeticTarget::D), 2, 8)),
+            0x5B => Some((Instruction::BIT(3, ArithmeticTarget::E), 2, 8)),
+            0x5C => Some((Instruction::BIT(3, ArithmeticTarget::H), 2, 8)),
+            0x5D => Some((Instruction::BIT(3, ArithmeticTarget::L), 2, 8)),
+            0x5E => Some((Instruction::BIT(3, ArithmeticTarget::HLI), 2, 12)),
+            0x5F => Some((Instruction::BIT(3, ArithmeticTarget::A), 2, 8)),
+            0x60 => Some((Instruction::BIT(4, ArithmeticTarget::B), 2, 8)),
+            0x61 => Some((Instruction::BIT(4, ArithmeticTarget::C), 2, 8)),
+            0x62 => Some((Instruction::BIT(4, ArithmeticTarget::D), 2, 8)),
+            0x63 => Some((Instruction::BIT(4, ArithmeticTarget::E), 2, 8)),
+            0x64 => Some((Instruction::BIT(4, ArithmeticTarget::H), 2, 8)),
+            0x65 => Some((Instruction::BIT(4, ArithmeticTarget::L), 2, 8)),
+            0x66 => Some((Instruction::BIT(4, ArithmeticTarget::HLI), 2, 12)),
+            0x67 => Some((Instruction::BIT(4, ArithmeticTarget::A), 2, 8)),
+            0x68 => Some((Instruction::BIT(5, ArithmeticTarget::B), 2, 8)),
+            0x69 => Some((Instruction::BIT(5, ArithmeticTarget::C), 2, 8)),
+            0x6A => Some((Instruction::BIT(5, ArithmeticTarget::D), 2, 8)),
+            0x6B => Some((Instruction::BIT(5, ArithmeticTarget::E), 2, 8)),
+            0x6C => Some((Instruction::BIT(5, ArithmeticTarget::H), 2, 8)),
+            0x6D => Some((Instruction::BIT(5, ArithmeticTarget::L), 2, 8)),
+            0x6E => Some((Instruction::BIT(5, ArithmeticTarget::HLI), 2, 12)),
+            0x6F => Some((Instruction::BIT(5, ArithmeticTarget::A), 2, 8)),
+            0x70 => Some((Instruction::BIT(6, ArithmeticTarget::B), 2, 8)),
+            0x71 => Some((Instruction::BIT(6, ArithmeticTarget::C), 2, 8)),
+            0x72 => Some((Instruction::BIT(6, ArithmeticTarget::D), 2, 8)),
+            0x73 => Some((Instruction::BIT(6, ArithmeticTarget::E), 2, 8)),
+            0x74 => Some((Instruction::BIT(6, ArithmeticTarget::H), 2, 8)),
+            0x75 => Some((Instruction::BIT(6, ArithmeticTarget::L), 2, 8)),
+            0x76 => Some((Instruction::BIT(6, ArithmeticTarget::HLI), 2, 12)),
+            0x77 => Some((Instruction::BIT(6, ArithmeticTarget::A), 2, 8)),
+            0x78 => Some((Instruction::BIT(7, ArithmeticTarget::B), 2, 8)),
+            0x79 => Some((Instruction::BIT(7, ArithmeticTarget::C), 2, 8)),
+            0x7A => Some((Instruction::BIT(7, ArithmeticTarget::D), 2, 8)),
+            0x7B => Some((Instruction::BIT(7, ArithmeticTarget::E), 2, 8)),
+            0x7C => Some((Instruction::BIT(7, ArithmeticTarget::H), 2, 8)),
+            0x7D => Some((Instruction::BIT(7, ArithmeticTarget::L), 2, 8)),
+            0x7E => Some((Instruction::BIT(7, ArithmeticTarget::HLI), 2, 12)),
+            0x7F => Some((Instruction::BIT(7, ArithmeticTarget::A), 2, 8)),
+
+            // RES instructions
+            0x80 => Some((Instruction::RES(0, ArithmeticTarget::B), 2, 8)),
+            0x81 => Some((Instruction::RES(0, ArithmeticTarget::C), 2, 8)),
+            0x82 => Some((Instruction::RES(0, ArithmeticTarget::D), 2, 8)),
+            0x83 => Some((Instruction::RES(0, ArithmeticTarget::E), 2, 8)),
+            0x84 => Some((Instruction::RES(0, ArithmeticTarget::H), 2, 8)),
+            0x85 => Some((Instruction::RES(0, ArithmeticTarget::L), 2, 8)),
+            0x86 => Some((Instruction::RES(0, ArithmeticTarget::HLI), 2, 12)),
+            0x87 => Some((Instruction::RES(0, ArithmeticTarget::A), 2, 8)),
+            0x88 => Some((Instruction::RES(1, ArithmeticTarget::B), 2, 8)),
+            0x89 => Some((Instruction::RES(1, ArithmeticTarget::C), 2, 8)),
+            0x8A => Some((Instruction::RES(1, ArithmeticTarget::D), 2, 8)),
+            0x8B => Some((Instruction::RES(1, ArithmeticTarget::E), 2, 8)),
+            0x8C => Some((Instruction::RES(1, ArithmeticTarget::H), 2, 8)),
+            0x8D => Some((Instruction::RES(1, ArithmeticTarget::L), 2, 8)),
+            0x8E => Some((Instruction::RES(1, ArithmeticTarget::HLI), 2, 12)),
+            0x8F => Some((Instruction::RES(1, ArithmeticTarget::A), 2, 8)),
+            0x90 => Some((Instruction::RES(2, ArithmeticTarget::B), 2, 8)),
+            0x91 => Some((Instruction::RES(2, ArithmeticTarget::C), 2, 8)),
+            0x92 => Some((Instruction::RES(2, ArithmeticTarget::D), 2, 8)),
+            0x93 => Some((Instruction::RES(2, ArithmeticTarget::E), 2, 8)),
+            0x94 => Some((Instruction::RES(2, ArithmeticTarget::H), 2, 8)),
+            0x95 => Some((Instruction::RES(2, ArithmeticTarget::L), 2, 8)),
+            0x96 => Some((Instruction::RES(2, ArithmeticTarget::HLI), 2, 12)),
+            0x97 => Some((Instruction::RES(2, ArithmeticTarget::A), 2, 8)),
+            0x98 => Some((Instruction::RES(3, ArithmeticTarget::B), 2, 8)),
+            0x99 => Some((Instruction::RES(3, ArithmeticTarget::C), 2, 8)),
+            0x9A => Some((Instruction::RES(3, ArithmeticTarget::D), 2, 8)),
+            0x9B => Some((Instruction::RES(3, ArithmeticTarget::E), 2, 8)),
+            0x9C => Some((Instruction::RES(3, ArithmeticTarget::H), 2, 8)),
+            0x9D => Some((Instruction::RES(3, ArithmeticTarget::L), 2, 8)),
+            0x9E => Some((Instruction::RES(3, ArithmeticTarget::HLI), 2, 12)),
+            0x9F => Some((Instruction::RES(3, ArithmeticTarget::A), 2, 8)),
+            0xA0 => Some((Instruction::RES(4, ArithmeticTarget::B), 2, 8)),
+            0xA1 => Some((Instruction::RES(4, ArithmeticTarget::C), 2, 8)),
+            0xA2 => Some((Instruction::RES(4, ArithmeticTarget::D), 2, 8)),
+            0xA3 => Some((Instruction::RES(4, ArithmeticTarget::E), 2, 8)),
+            0xA4 => Some((Instruction::RES(4, ArithmeticTarget::H), 2, 8)),
+            0xA5 => Some((Instruction::RES(4, ArithmeticTarget::L), 2, 8)),
+            0xA6 => Some((Instruction::RES(4, ArithmeticTarget::HLI), 2, 12)),
+            0xA7 => Some((Instruction::RES(4, ArithmeticTarget::A), 2, 8)),
+            0xA8 => Some((Instruction::RES(5, ArithmeticTarget::B), 2, 8)),
+            0xA9 => Some((Instruction::RES(5, ArithmeticTarget::C), 2, 8)),
+            0xAA => Some((Instruction::RES(5, ArithmeticTarget::D), 2, 8)),
+            0xAB => Some((Instruction::RES(5, ArithmeticTarget::E), 2, 8)),
+            0xAC => Some((Instruction::RES(5, ArithmeticTarget::H), 2, 8)),
+            0xAD => Some((Instruction::RES(5, ArithmeticTarget::L), 2, 8)),
+            0xAE => Some((Instruction::RES(5, ArithmeticTarget::HLI), 2, 12)),
+            0xAF => Some((Instruction::RES(5, ArithmeticTarget::A), 2, 8)),
+            0xB0 => Some((Instruction::RES(6, ArithmeticTarget::B), 2, 8)),
+            0xB1 => Some((Instruction::RES(6, ArithmeticTarget::C), 2, 8)),
+            0xB2 => Some((Instruction::RES(6, ArithmeticTarget::D), 2, 8)),
+            0xB3 => Some((Instruction::RES(6, ArithmeticTarget::E), 2, 8)),
+            0xB4 => Some((Instruction::RES(6, ArithmeticTarget::H), 2, 8)),
+            0xB5 => Some((Instruction::RES(6, ArithmeticTarget::L), 2, 8)),
+            0xB6 => Some((Instruction::RES(6, ArithmeticTarget::HLI), 2, 12)),
+            0xB7 => Some((Instruction::RES(6, ArithmeticTarget::A), 2, 8)),
+            0xB8 => Some((Instruction::RES(7, ArithmeticTarget::B), 2, 8)),
+            0xB9 => Some((Instruction::RES(7, ArithmeticTarget::C), 2, 8)),
+            0xBA => Some((Instruction::RES(7, ArithmeticTarget::D), 2, 8)),
+            0xBB => Some((Instruction::RES(7, ArithmeticTarget::E), 2, 8)),
+            0xBC => Some((Instruction::RES(7, ArithmeticTarget::H), 2, 8)),
+            0xBD => Some((Instruction::RES(7, ArithmeticTarget::L), 2, 8)),
+            0xBE => Some((Instruction::RES(7, ArithmeticTarget::HLI), 2, 12)),
+            0xBF => Some((Instruction::RES(7, ArithmeticTarget::A), 2, 8)),
+
+            // SET instructions
+            0xC0 => Some((Instruction::SET(0, ArithmeticTarget::B), 2, 8)),
+            0xC1 => Some((Instruction::SET(0, ArithmeticTarget::C), 2, 8)),
+            0xC2 => Some((Instruction::SET(0, ArithmeticTarget::D), 2, 8)),
+            0xC3 => Some((Instruction::SET(0, ArithmeticTarget::E), 2, 8)),
+            0xC4 => Some((Instruction::SET(0, ArithmeticTarget::H), 2, 8)),
+            0xC5 => Some((Instruction::SET(0, ArithmeticTarget::L), 2, 8)),
+            0xC6 => Some((Instruction::SET(0, ArithmeticTarget::HLI), 2, 12)),
+            0xC7 => Some((Instruction::SET(0, ArithmeticTarget::A), 2, 8)),
+            0xC8 => Some((Instruction::SET(1, ArithmeticTarget::B), 2, 8)),
+            0xC9 => Some((Instruction::SET(1, ArithmeticTarget::C), 2, 8)),
+            0xCA => Some((Instruction::SET(1, ArithmeticTarget::D), 2, 8)),
+            0xCB => Some((Instruction::SET(1, ArithmeticTarget::E), 2, 8)),
+            0xCC => Some((Instruction::SET(1, ArithmeticTarget::H), 2, 8)),
+            0xCD => Some((Instruction::SET(1, ArithmeticTarget::L), 2, 8)),
+            0xCE => Some((Instruction::SET(1, ArithmeticTarget::HLI), 2, 12)),
+            0xCF => Some((Instruction::SET(1, ArithmeticTarget::A), 2, 8)),
+            0xD0 => Some((Instruction::SET(2, ArithmeticTarget::B), 2, 8)),
+            0xD1 => Some((Instruction::SET(2, ArithmeticTarget::C), 2, 8)),
+            0xD2 => Some((Instruction::SET(2, ArithmeticTarget::D), 2, 8)),
+            0xD3 => Some((Instruction::SET(2, ArithmeticTarget::E), 2, 8)),
+            0xD4 => Some((Instruction::SET(2, ArithmeticTarget::H), 2, 8)),
+            0xD5 => Some((Instruction::SET(2, ArithmeticTarget::L), 2, 8)),
+            0xD6 => Some((Instruction::SET(2, ArithmeticTarget::HLI), 2, 12)),
+            0xD7 => Some((Instruction::SET(2, ArithmeticTarget::A), 2, 8)),
+            0xD8 => Some((Instruction::SET(3, ArithmeticTarget::B), 2, 8)),
+            0xD9 => Some((Instruction::SET(3, ArithmeticTarget::C), 2, 8)),
+            0xDA => Some((Instruction::SET(3, ArithmeticTarget::D), 2, 8)),
+            0xDB => Some((Instruction::SET(3, ArithmeticTarget::E), 2, 8)),
+            0xDC => Some((Instruction::SET(3, ArithmeticTarget::H), 2, 8)),
+            0xDD => Some((Instruction::SET(3, ArithmeticTarget::L), 2, 8)),
+            0xDE => Some((Instruction::SET(3, ArithmeticTarget::HLI), 2, 12)),
+            0xDF => Some((Instruction::SET(3, ArithmeticTarget::A), 2, 8)),
+            0xE0 => Some((Instruction::SET(4, ArithmeticTarget::B), 2, 8)),
+            0xE1 => Some((Instruction::SET(4, ArithmeticTarget::C), 2, 8)),
+            0xE2 => Some((Instruction::SET(4, ArithmeticTarget::D), 2, 8)),
+            0xE3 => Some((Instruction::SET(4, ArithmeticTarget::E), 2, 8)),
+            0xE4 => Some((Instruction::SET(4, ArithmeticTarget::H), 2, 8)),
+            0xE5 => Some((Instruction::SET(4, ArithmeticTarget::L), 2, 8)),
+            0xE6 => Some((Instruction::SET(4, ArithmeticTarget::HLI), 2, 12)),
+            0xE7 => Some((Instruction::SET(4, ArithmeticTarget::A), 2, 8)),
+            0xE8 => Some((Instruction::SET(5, ArithmeticTarget::B), 2, 8)),
+            0xE9 => Some((Instruction::SET(5, ArithmeticTarget::C), 2, 8)),
+            0xEA => Some((Instruction::SET(5, ArithmeticTarget::D), 2, 8)),
+            0xEB => Some((Instruction::SET(5, ArithmeticTarget::E), 2, 8)),
+            0xEC => Some((Instruction::SET(5, ArithmeticTarget::H), 2, 8)),
+            0xED => Some((Instruction::SET(5, ArithmeticTarget::L), 2, 8)),
+            0xEE => Some((Instruction::SET(5, ArithmeticTarget::HLI), 2, 12)),
+            0xEF => Some((Instruction::SET(5, ArithmeticTarget::A), 2, 8)),
+            0xF0 => Some((Instruction::SET(6, ArithmeticTarget::B), 2, 8)),
+            0xF1 => Some((Instruction::SET(6, ArithmeticTarget::C), 2, 8)),
+            0xF2 => Some((Instruction::SET(6, ArithmeticTarget::D), 2, 8)),
+            0xF3 => Some((Instruction::SET(6, ArithmeticTarget::E), 2, 8)),
+            0xF4 => Some((Instruction::SET(6, ArithmeticTarget::H), 2, 8)),
+            0xF5 => Some((Instruction::SET(6, ArithmeticTarget::L), 2, 8)),
+            0xF6 => Some((Instruction::SET(6, ArithmeticTarget::HLI), 2, 12)),
+            0xF7 => Some((Instruction::SET(6, ArithmeticTarget::A), 2, 8)),
+            0xF8 => Some((Instruction::SET(7, ArithmeticTarget::B), 2, 8)),
+            0xF9 => Some((Instruction::SET(7, ArithmeticTarget::C), 2, 8)),
+            0xFA => Some((Instruction::SET(7, ArithmeticTarget::D), 2, 8)),
+            0xFB => Some((Instruction::SET(7, ArithmeticTarget::E), 2, 8)),
+            0xFC => Some((Instruction::SET(7, ArithmeticTarget::H), 2, 8)),
+            0xFD => Some((Instruction::SET(7, ArithmeticTarget::L), 2, 8)),
+            0xFE => Some((Instruction::SET(7, ArithmeticTarget::HLI), 2, 12)),
+            0xFF => Some((Instruction::SET(7, ArithmeticTarget::A), 2, 8)),
+
             _ => None // TODO add all prefix instructions
         }
     }
@@ -791,6 +1071,11 @@ impl CPU {
         // Increment pc by the size of the instruction
         self.pc.wrapping_add(size as u16);
         cycles
+    }
+
+    // Returns a slice to the pixel buffer 
+    fn pixel_buffer() -> &[u32] {
+
     }
 
     /*
@@ -1019,6 +1304,10 @@ impl CPU {
     }
 }
 
+const CLOCK: usize = 4194304; // in Hz
+const FPS: usize = 30;
+const ONE_FRAME_IN_CYCLES: usize = CLOCK / ( 4 * FPS );
+
 fn run(mut cpu: CPU, mut window: Window) {
     let mut window_buffer = [0; WIDTH * HEIGHT];
     let mut cycles_elapsed_in_frame = 0usize;
@@ -1054,9 +1343,10 @@ fn main() {
         panic!("{}", e);
     });
 
+    // TODO gameboy framerate is 59.727500569606 Hz
     window.limit_update_rate(Some(std::time::Duration::from_micros(8300)));
 
-    let mut cpu = CPU{};
+    let mut cpu = CPU::new();
 
     run(cpu, window);
 }
