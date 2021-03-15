@@ -297,8 +297,8 @@ enum Instruction {
 // HLI means value at the address pointed to by HL registers, D8 means next byte
 enum ArithmeticType { Byte(ByteTarget), Word(WordTarget), SP }
 
-enum ByteTarget {A, B, C, D, E, H, L, D8, HLI }
-enum WordTarget {BC, DE, HL, SP,}
+enum ByteTarget { A, B, C, D, E, H, L, D8, HLI }
+enum WordTarget { BC, DE, HL, SP }
 
 
 enum JumpTest {
@@ -1047,8 +1047,11 @@ impl CPU {
     // Returns the number of cycles run
     fn run(&mut self, time_delta: u32) -> usize {
         // Calculate how many times to run step depending on time_delta
+        let cycles_per_nano = CLOCK as f32 / 1e9;
+        let cycles_to_run = (cycles_per_nano * time_delta as f32) as usize;
+
         let mut cycles = 0;
-        for i in 0.. {
+        while cycles < cycles_to_run {
             cycles += self.step()
         }
 
@@ -1057,24 +1060,23 @@ impl CPU {
     }
 
     // Executes one CPU cycle. Reads and executes an instruction from the position of the pc and updates the pc
+    // Returns the number of cycles performed
     fn step(&mut self) -> usize {
-        let mut instruction_byte = self.bus.read_byte(self.pc);
+        let mut instruction_byte = self.read_next_byte();
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
-            instruction_byte = self.bus.read_byte(self.pc + 1); // TODO add wrap add and see if pc needs to be incremented
+            instruction_byte = self.read_next_byte();
         }
 
         // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
-        let (size, cycles) = if let Some((instruction, size, cycles)) = Instruction::from_byte(instruction_byte, prefixed) {
+        let cycles = if let Some((instruction, _, cycles)) = Instruction::from_byte(instruction_byte, prefixed) {
             self.execute(instruction);
-            (size, cycles)
+            cycles
         } else {
             let description = format!("0x{}{:x}", if prefixed { "cb" } else { "" }, instruction_byte);
             panic!("Unknown instruction found for: {}", description);
         };
 
-        // Increment pc by the size of the instruction
-        self.pc.wrapping_add(size as u16);
         cycles
     }
 
@@ -1096,9 +1098,9 @@ impl CPU {
         This is done because some instructions like JMP will change the location arbitrarily.
         NOTE: pc increments should use wrapping_add()
     */
-    fn execute(&mut self, instruction: Instruction) -> u16 {
+    fn execute(&mut self, instruction: Instruction) {
         if self.is_halted {
-            return self.pc
+            return
         }
 
         match instruction {
@@ -1110,7 +1112,7 @@ impl CPU {
             Instruction::CALL(test) => self.call(test),
             Instruction::RET(test) => self.ret(test),
             Instruction::NOP => self.pc.wrapping_add(1),
-            Instruction::HALT => { self.is_halted = true; self.pc },
+            Instruction::HALT => { self.is_halted = true },
             _ => {panic!("Instruction not found")} // TODO add more instructions
         }
     }
@@ -1120,41 +1122,61 @@ impl CPU {
         Reads the current value from target register. Adds the value to register A overflowing if necessary.
         Updates the flags register and writer the new value to register A.
     */
-    fn add(&mut self, target: ArithmeticType) -> u16 {
-        let value: u8 = 0; // TODO remove this, compiler should allow it once all patterns are matched
+    fn add(&mut self, target: ArithmeticType) {
         match target {
             ArithmeticType::Byte(byte_target) => {
+                let value: u8;
                 match byte_target {
-                    ByteTarget::A => { let value = self.registers.a; },
-                    ByteTarget::B => { let value = self.registers.b; },
-                    ByteTarget::C => { let value = self.registers.c; },
-                    ByteTarget::D => { let value = self.registers.d; },
-                    ByteTarget::E => { let value = self.registers.e; },
-                    ByteTarget::H => { let value = self.registers.h; },
-                    ByteTarget::L => { let value = self.registers.l; },
-                    _ => unimplemented!(),
+                    ByteTarget::A => { value = self.registers.a; },
+                    ByteTarget::B => { value = self.registers.b; },
+                    ByteTarget::C => { value = self.registers.c; },
+                    ByteTarget::D => { value = self.registers.d; },
+                    ByteTarget::E => { value = self.registers.e; },
+                    ByteTarget::H => { value = self.registers.h; },
+                    ByteTarget::L => { value = self.registers.l; },
+                    ByteTarget::D8 => { value = self.read_next_byte() },
+                    ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()) },
                 }
+                let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
+
+                // Check if half carry needs to be set by adding both lower nibbles together and see if the result is greater than 1111 (0xF)
+                self.registers.f.zero = new_value == 0;
+                self.registers.f.carry = did_overflow;
+                self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
+                
+                self.registers.a = new_value;
+
             },
-            _ => unimplemented!(),
+            ArithmeticType::Word(word_target) => {
+                let value: u16;
+                match word_target {
+                    WordTarget::BC => { value = self.registers.get_bc() }, 
+                    WordTarget::DE => { value = self.registers.get_de() }, 
+                    WordTarget::HL => { value = self.registers.get_hl() }, 
+                    WordTarget::SP => { value = self.registers.get_af() },
+                }
+                let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
+                
+                // Half-carry is set if overflow from bit 11
+                self.registers.f.carry = did_overflow;
+                self.registers.f.half_carry = (self.registers.get_hl() & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
+
+                self.registers.set_hl(new_value)
+            },
+            ArithmeticType::SP => {
+                let value = self.read_next_byte() as i8 as u16;
+                let (new_value, _) = self.sp.overflowing_add(value);
+
+                // Instruction sets carry bit if overflow occured on bit 7, thus did_overflow can't be used here
+                self.registers.f.carry = (self.sp & 0x00FF) + (value & 0x00FF) > 0x00FF;
+                self.registers.f.half_carry = (self.sp & 0x000F) + (value & 0x000F) > 0x000F;
+
+                self.sp = new_value;
+            },
         }
 
-        let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
-        /*
-            Flags have to be set according to the following rules:
-            Zero: true if the result of the operation is 0
-            Subtract: true if the operation was a subtraction
-            Carry: true if operation resulted in overflow
-            Half Carry: true if the operation resulted in overflow from lower nibble to upper nibble
-        */
-        self.registers.f.zero = new_value == 0;
+        // Last flag common for all cases
         self.registers.f.subtract = false;
-        self.registers.f.carry = did_overflow;
-        // Check if half carry needs to be set by adding both lower nibbles together and see if the result is greater than 1111 (0xF)
-        self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
-
-        self.registers.a = new_value;
-
-        self.pc.wrapping_add(1)
     }
 
     /*
@@ -1316,14 +1338,16 @@ impl CPU {
         }
     }
 
-    // Reads the next byte from where the pc is
-    fn read_next_byte(&self) -> u8 {
-        self.bus.read_byte(self.pc.wrapping_add(1))
+    // Increments the pc and reads the next byte
+    fn read_next_byte(&mut self) -> u8 {
+        self.pc = self.pc.wrapping_add(1);
+        self.bus.read_byte(self.pc)
     }
 
-    // Reads the next 2 bytes from where the pc is
-    fn read_next_word(&self) -> u16 {
-        (self.bus.read_byte(self.pc.wrapping_add(1)) as u16) << 8 | self.bus.read_byte(self.pc.wrapping_add(2)) as u16
+    // Increments the pc and reads the next word
+    fn read_next_word(&mut self) -> u16 {
+        self.pc = self.pc.wrapping_add(1);
+        (self.bus.read_byte(self.pc) as u16) << 8 | self.bus.read_byte(self.pc.wrapping_add(2)) as u16
     }
 }
 
@@ -1341,9 +1365,12 @@ fn run(mut cpu: CPU, mut window: Window) {
         let time_delta = now.elapsed().subsec_nanos();
         now = Instant::now();
 
-        cycles_elapsed_in_frame += cpu.run(time_delta); // Gameboy knows how many times to call step in this time
+        // Gameboy knows how many times to call step in this time
+        // Can't just run ONE_FRAME_IN_CYCLES steps as the emulator can run quicker than the actual gameboy
+        cycles_elapsed_in_frame += cpu.run(time_delta); 
+
         // If the gameboy should update the screen
-        if cycles_elapsed_in_frame >= ONE_FRAME_IN_CYCLES { // 30 times per second, should update
+        if cycles_elapsed_in_frame >= ONE_FRAME_IN_CYCLES {
             for (i, pixel) in cpu.pixel_buffer().iter().enumerate() {
                 window_buffer[i] = *pixel;
             }
