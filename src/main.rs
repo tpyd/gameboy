@@ -265,8 +265,8 @@ enum Instruction {
     SET(u8, ByteTarget),  // Set bit n at given register to 1
 
     // Jump instructions
-    JP(JumpTest),
-    JR(JumpTest), // Relative jump
+    JP(JumpType),
+    JR(JumpCondition), // Relative jump
 
     // Memory instructions
     LD(LoadType),
@@ -276,8 +276,8 @@ enum Instruction {
     POP(StackTarget),
 
     // Function call
-    CALL(JumpTest),
-    RET(JumpTest),
+    CALL(JumpCondition),
+    RET(JumpCondition),
     RETI,
     RST(RSTVec),
 
@@ -300,15 +300,8 @@ enum ArithmeticType { Byte(ByteTarget), Word(WordTarget), SP }
 enum ByteTarget { A, B, C, D, E, H, L, D8, HLI }
 enum WordTarget { BC, DE, HL, SP }
 
-
-enum JumpTest {
-    NotZero,
-    Zero,
-    NotCarry,
-    Carry,
-    Always,
-    AlwaysHL, // For instruction 0xE9 where it jumps to address in register HL
-}
+enum JumpType { Word(JumpCondition), Address }
+enum JumpCondition { NotZero, Zero, NotCarry, Carry, Always }
 
 enum LoadByteTarget {
     A, B, C, D, E, H, L, HLI,
@@ -610,30 +603,30 @@ impl Instruction {
             0xFE => Some(Instruction::CP(ByteTarget::D8)),
 
             // Jump instructions
-            0x18 => Some(Instruction::JR(JumpTest::Always)),
-            0x20 => Some(Instruction::JR(JumpTest::NotZero)),
-            0x30 => Some(Instruction::JR(JumpTest::NotCarry)),
-            0x28 => Some(Instruction::JR(JumpTest::Zero)),
-            0x38 => Some(Instruction::JR(JumpTest::Carry)),
+            0x18 => Some(Instruction::JR(JumpCondition::Always)),
+            0x20 => Some(Instruction::JR(JumpCondition::NotZero)),
+            0x30 => Some(Instruction::JR(JumpCondition::NotCarry)),
+            0x28 => Some(Instruction::JR(JumpCondition::Zero)),
+            0x38 => Some(Instruction::JR(JumpCondition::Carry)),
 
-            0xC2 => Some(Instruction::JP(JumpTest::NotZero)),
-            0xD2 => Some(Instruction::JP(JumpTest::NotCarry)),
-            0xC3 => Some(Instruction::JP(JumpTest::Always)),
-            0xE9 => Some(Instruction::JP(JumpTest::AlwaysHL)),
-            0xCA => Some(Instruction::JP(JumpTest::Zero)),
-            0xDA => Some(Instruction::JP(JumpTest::Carry)),
+            0xC2 => Some(Instruction::JP(JumpType::Word(JumpCondition::NotZero))),
+            0xD2 => Some(Instruction::JP(JumpType::Word(JumpCondition::NotCarry))),
+            0xC3 => Some(Instruction::JP(JumpType::Word(JumpCondition::Always))),
+            0xE9 => Some(Instruction::JP(JumpType::Address)),
+            0xCA => Some(Instruction::JP(JumpType::Word(JumpCondition::Zero))),
+            0xDA => Some(Instruction::JP(JumpType::Word(JumpCondition::Carry))),
 
-            0xC4 => Some(Instruction::CALL(JumpTest::NotZero)),
-            0xD4 => Some(Instruction::CALL(JumpTest::NotCarry)),
-            0xCC => Some(Instruction::CALL(JumpTest::Zero)),
-            0xDC => Some(Instruction::CALL(JumpTest::Carry)),
-            0xCD => Some(Instruction::CALL(JumpTest::Always)),
+            0xC4 => Some(Instruction::CALL(JumpCondition::NotZero)),
+            0xD4 => Some(Instruction::CALL(JumpCondition::NotCarry)),
+            0xCC => Some(Instruction::CALL(JumpCondition::Zero)),
+            0xDC => Some(Instruction::CALL(JumpCondition::Carry)),
+            0xCD => Some(Instruction::CALL(JumpCondition::Always)),
 
-            0xC0 => Some(Instruction::RET(JumpTest::NotZero)),
-            0xD0 => Some(Instruction::RET(JumpTest::NotCarry)),
-            0xC8 => Some(Instruction::RET(JumpTest::Zero)),
-            0xD8 => Some(Instruction::RET(JumpTest::Carry)),
-            0xC9 => Some(Instruction::RET(JumpTest::Always)),
+            0xC0 => Some(Instruction::RET(JumpCondition::NotZero)),
+            0xD0 => Some(Instruction::RET(JumpCondition::NotCarry)),
+            0xC8 => Some(Instruction::RET(JumpCondition::Zero)),
+            0xD8 => Some(Instruction::RET(JumpCondition::Carry)),
+            0xC9 => Some(Instruction::RET(JumpCondition::Always)),
 
             0xD9 => Some(Instruction::RETI),
 
@@ -1113,8 +1106,8 @@ impl CPU {
 
     /*
         ADD instruction.
-        Reads the current value from target register. Adds the value to register A overflowing if necessary.
-        Updates the flags register and writer the new value to register A.
+        Reads the current value from target (register or memory value). Adds the
+        value to register A or HL depending on instruction overflowing if necessary.
     */
     fn add(&mut self, target: ArithmeticType) -> usize {
         let mut cycles = 4; // Default number of cycles for ADD instruction
@@ -1134,7 +1127,7 @@ impl CPU {
                 }
                 let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
 
-                // Check if half carry needs to be set by adding both lower nibbles together and see if the result is greater than 1111 (0xF)
+                // Half carry is set if bit 3 overflows
                 self.registers.f.zero = new_value == 0;
                 self.registers.f.carry = did_overflow;
                 self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
@@ -1153,7 +1146,7 @@ impl CPU {
                 }
                 let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
 
-                // Half-carry is set if overflow from bit 11
+                // Half-carry is set if bit 11 overflows
                 self.registers.f.carry = did_overflow;
                 self.registers.f.half_carry = (self.registers.get_hl() & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
 
@@ -1183,25 +1176,33 @@ impl CPU {
         Jumps to a location given by the next 2 bytes if one of the following conditions are met
         flag zero is set, flag carry is set or always jump.
     */
-    fn jump(&self, test: JumpTest) -> usize {
-        let jump_condition = match test {
-            JumpTest::NotZero => !self.registers.f.zero,
-            JumpTest::NotCarry => !self.registers.f.carry,
-            JumpTest::Zero => self.registers.f.zero,
-            JumpTest::Carry => self.registers.f.carry,
-            JumpTest::Always => true,
-            _ => unimplemented!(),
-        };
+    fn jump(&mut self, jump_type: JumpType) -> usize {
+        let mut cycles = 4;
+        let jump_condition;
+        match jump_type {
+            JumpType::Word(condition_check) => {
+                jump_condition = match condition_check {
+                    JumpCondition::NotZero => !self.registers.f.zero,
+                    JumpCondition::NotCarry => !self.registers.f.carry,
+                    JumpCondition::Zero => self.registers.f.zero,
+                    JumpCondition::Carry => self.registers.f.carry,
+                    JumpCondition::Always => true,
+                };
 
-        if jump_condition {
-            // If the jump condition is set, read the next 2 bytes and return it (location of the jump)
-            let least_significant_byte = self.bus.read_byte(self.pc + 1) as u16;
-            let most_significant_byte = self.bus.read_byte(self.pc + 2) as u16;
-            (most_significant_byte << 8) | least_significant_byte
-        } else {
-            // Jump condition not set, increment pc by 3 bytes (1 for instruction and 2 for jump location)
-            self.pc.wrapping_add(3)
+                if jump_condition {
+                    cycles = 16;
+                    self.pc = self.read_next_word();
+                } else {
+                    cycles = 12;
+                    self.read_next_word();
+                }
+            },
+            JumpType::Address => {
+                self.pc = self.registers.get_hl();
+            }
         }
+
+        cycles
     }
 
     /*
@@ -1297,14 +1298,14 @@ impl CPU {
         CALL instruction
         Calls a function by setting the pc to the address given by the next 2 bytes
     */
-    fn call(&mut self, test: JumpTest) -> usize {
+    fn call(&mut self, test: JumpCondition) -> usize {
         let jump_condition = match test {
-            JumpTest::NotZero => !self.registers.f.zero,
-            JumpTest::NotCarry => !self.registers.f.carry,
-            JumpTest::Zero => self.registers.f.zero,
-            JumpTest::Carry => self.registers.f.carry,
-            JumpTest::Always => true,
-            _ => panic!("Invalid JP call 'JumpTest::AlwaysHL'"),
+            JumpCondition::NotZero => !self.registers.f.zero,
+            JumpCondition::NotCarry => !self.registers.f.carry,
+            JumpCondition::Zero => self.registers.f.zero,
+            JumpCondition::Carry => self.registers.f.carry,
+            JumpCondition::Always => true,
+            _ => panic!("Invalid JP call 'JumpCondition::AlwaysHL'"),
         };
 
         let next_pc = self.pc.wrapping_add(3); // Jump past address when returning from call
@@ -1320,15 +1321,15 @@ impl CPU {
         RET instruction
         Returns from the function call.
     */
-    fn ret(&mut self, test: JumpTest) -> usize {
+    fn ret(&mut self, test: JumpCondition) -> usize {
         let jump_condition = match test {
-            JumpTest::NotZero => !self.registers.f.zero,
-            JumpTest::NotCarry => !self.registers.f.carry,
-            JumpTest::Zero => self.registers.f.zero,
-            JumpTest::Carry => self.registers.f.carry,
-            JumpTest::Always => true,
+            JumpCondition::NotZero => !self.registers.f.zero,
+            JumpCondition::NotCarry => !self.registers.f.carry,
+            JumpCondition::Zero => self.registers.f.zero,
+            JumpCondition::Carry => self.registers.f.carry,
+            JumpCondition::Always => true,
             _ => unimplemented!(),
-        }; // TODO make this into a method on the JumpTest enum maybe? not sure how due to self.register
+        }; // TODO make this into a method on the JumpCondition enum maybe? not sure how due to self.register
 
         if jump_condition {
             self.pop_value()
@@ -1339,14 +1340,16 @@ impl CPU {
 
     // Increments the pc and reads the next byte
     fn read_next_byte(&mut self) -> u8 {
+        let next_byte = self.bus.read_byte(self.pc);
         self.pc = self.pc.wrapping_add(1);
-        self.bus.read_byte(self.pc)
+        next_byte
     }
 
     // Increments the pc and reads the next word
     fn read_next_word(&mut self) -> u16 {
-        self.pc = self.pc.wrapping_add(1);
-        (self.bus.read_byte(self.pc) as u16) << 8 | self.bus.read_byte(self.pc.wrapping_add(2)) as u16
+        let word = (self.bus.read_byte(self.pc) as u16) << 8 | self.bus.read_byte(self.pc.wrapping_add(1)) as u16;
+        self.pc = self.pc.wrapping_add(2);
+        word
     }
 }
 
