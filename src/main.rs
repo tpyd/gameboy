@@ -1091,7 +1091,10 @@ impl CPU {
         }
 
         match instruction {
-            Instruction::ADD(target) => self.add(target),
+            Instruction::ADD(target) => self.add(target, false),
+            Instruction::ADC(target) => self.add(target, true),
+            Instruction::SUB(target) => self.sub(target, false),
+            Instruction::SBC(target) => self.sub(target, true),
             Instruction::JP(test) => self.jump(test),
             Instruction::LD(load_type) => self.load(load_type),
             Instruction::PUSH(target) => self.push(target),
@@ -1105,11 +1108,11 @@ impl CPU {
     }
 
     /*
-        ADD instruction.
+        ADD and ADC instruction.
         Reads the current value from target (register or memory value). Adds the
         value to register A or HL depending on instruction overflowing if necessary.
     */
-    fn add(&mut self, target: ArithmeticType) -> usize {
+    fn add(&mut self, target: ArithmeticType, carry: bool) -> usize {
         let mut cycles = 4; // Default number of cycles for ADD instruction
         match target {
             ArithmeticType::Byte(byte_target) => {
@@ -1125,6 +1128,7 @@ impl CPU {
                     ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
                     ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
                 }
+                if carry { value += self.registers.f.carry as u8; }
                 let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
 
                 // Half carry is set if bit 3 overflows
@@ -1144,6 +1148,7 @@ impl CPU {
                     WordTarget::HL => { value = self.registers.get_hl() },
                     WordTarget::SP => { value = self.registers.get_af() },
                 }
+                if carry { value += self.registers.f.carry as u16; }
                 let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
 
                 // Half-carry is set if bit 11 overflows
@@ -1155,6 +1160,7 @@ impl CPU {
             ArithmeticType::SP => {
                 cycles = 16;
                 let value = self.read_next_byte() as i8 as u16;
+                if carry { value += self.registers.f.carry as u16; }
                 let (new_value, _) = self.sp.overflowing_add(value);
 
                 // Instruction sets carry bit if overflow occured on bit 7, thus did_overflow can't be used here
@@ -1167,6 +1173,75 @@ impl CPU {
 
         // Last flag common for all cases
         self.registers.f.subtract = false;
+
+        cycles
+    }
+
+    /*
+        SUB and SBC instruction
+        Subtracts the target value (and carry flag for SBC) from register A or HL depending on instruction.
+    */
+    fn sub(&mut self, target: ArithmeticType, carry: bool) -> usize {
+        let mut cycles = 4; // Default number of cycles for ADD instruction
+        match target {
+            ArithmeticType::Byte(byte_target) => {
+                let value: u8;
+                match byte_target {
+                    ByteTarget::A => { value = self.registers.a; },
+                    ByteTarget::B => { value = self.registers.b; },
+                    ByteTarget::C => { value = self.registers.c; },
+                    ByteTarget::D => { value = self.registers.d; },
+                    ByteTarget::E => { value = self.registers.e; },
+                    ByteTarget::H => { value = self.registers.h; },
+                    ByteTarget::L => { value = self.registers.l; },
+                    ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
+                    ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+                }
+                if carry { value += self.registers.f.carry as u8; }
+                let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+
+                // Half carry is set if bit 3 overflows
+                self.registers.f.zero = new_value == 0;
+                self.registers.f.carry = value > self.registers.a;
+                self.registers.f.half_carry = (value & 0x0F) > (self.registers.a & 0x0F);
+
+                self.registers.a = new_value;
+
+            },
+            ArithmeticType::Word(word_target) => {
+                cycles = 8;
+                let value: u16;
+                match word_target {
+                    WordTarget::BC => { value = self.registers.get_bc() },
+                    WordTarget::DE => { value = self.registers.get_de() },
+                    WordTarget::HL => { value = self.registers.get_hl() },
+                    WordTarget::SP => { value = self.registers.get_af() },
+                }
+                if carry { value += self.registers.f.carry as u16; }
+                let (new_value, did_overflow) = self.registers.get_hl().overflowing_sub(value);
+
+                // Half-carry is set if bit 11 overflows
+                self.registers.f.carry = did_overflow;
+                self.registers.f.half_carry = (self.registers.get_hl() & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
+
+                self.registers.set_hl(new_value)
+            },
+            ArithmeticType::SP => {
+                cycles = 16;
+                let value = self.read_next_byte() as i8 as u16;
+                if carry { value += self.registers.f.carry as u16; }
+                let (new_value, _) = self.sp.overflowing_add(value);
+
+                // Instruction sets carry bit if overflow occured on bit 7, thus did_overflow can't be used here
+                self.registers.f.carry = (self.sp & 0x00FF) + (value & 0x00FF) > 0x00FF;
+                self.registers.f.half_carry = (self.sp & 0x000F) + (value & 0x000F) > 0x000F;
+
+                self.sp = new_value;
+            },
+        }
+
+        // Last flag common for all cases
+        self.registers.f.subtract = true;
 
         cycles
     }
