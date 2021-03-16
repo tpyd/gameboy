@@ -234,8 +234,8 @@ enum Instruction {
     // Arithmetic instructions
     ADD(ArithmeticType),  // Add target to register A
     ADC(ArithmeticType),  // Add the target plus carry flag to register A
-    SUB(ArithmeticType),  // Subtract target from register A
-    SBC(ArithmeticType),  // Subtract target and carry flag from register A
+    SUB(ByteTarget),      // Subtract target from register A
+    SBC(ByteTarget),      // Subtract target and carry flag from register A
     INC(ArithmeticType),  // Increment target
     DEC(ArithmeticType),  // Decrement target
 
@@ -538,25 +538,25 @@ impl Instruction {
             0xE8 => Some(Instruction::ADD(ArithmeticType::SP)),
 
             // Arithmetic subtract
-            0x90 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::B))),
-            0x91 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::C))),
-            0x92 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::D))),
-            0x93 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::E))),
-            0x94 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::H))),
-            0x95 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::L))),
-            0x96 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::HLI))),
-            0x97 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::A))),
-            0xD6 => Some(Instruction::SUB(ArithmeticType::Byte(ByteTarget::D8))),
+            0x90 => Some(Instruction::SUB(ByteTarget::B)),
+            0x91 => Some(Instruction::SUB(ByteTarget::C)),
+            0x92 => Some(Instruction::SUB(ByteTarget::D)),
+            0x93 => Some(Instruction::SUB(ByteTarget::E)),
+            0x94 => Some(Instruction::SUB(ByteTarget::H)),
+            0x95 => Some(Instruction::SUB(ByteTarget::L)),
+            0x96 => Some(Instruction::SUB(ByteTarget::HLI)),
+            0x97 => Some(Instruction::SUB(ByteTarget::A)),
+            0xD6 => Some(Instruction::SUB(ByteTarget::D8)),
 
-            0x98 => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::B))),
-            0x99 => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::C))),
-            0x9A => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::D))),
-            0x9B => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::E))),
-            0x9C => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::H))),
-            0x9D => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::L))),
-            0x9E => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::HLI))),
-            0x9F => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::A))),
-            0xDE => Some(Instruction::SBC(ArithmeticType::Byte(ByteTarget::D8))),
+            0x98 => Some(Instruction::SBC(ByteTarget::B)),
+            0x99 => Some(Instruction::SBC(ByteTarget::C)),
+            0x9A => Some(Instruction::SBC(ByteTarget::D)),
+            0x9B => Some(Instruction::SBC(ByteTarget::E)),
+            0x9C => Some(Instruction::SBC(ByteTarget::H)),
+            0x9D => Some(Instruction::SBC(ByteTarget::L)),
+            0x9E => Some(Instruction::SBC(ByteTarget::HLI)),
+            0x9F => Some(Instruction::SBC(ByteTarget::A)),
+            0xDE => Some(Instruction::SBC(ByteTarget::D8)),
 
             // Logic AND
             0xA0 => Some(Instruction::AND(ByteTarget::B)),
@@ -1095,6 +1095,14 @@ impl CPU {
             Instruction::ADC(target) => self.add(target, true),
             Instruction::SUB(target) => self.sub(target, false),
             Instruction::SBC(target) => self.sub(target, true),
+            Instruction::INC(target) => self.inc(target),
+            Instruction::DEC(target) => self.dec(target),
+
+            Instruction::AND(target) => self.and(target),
+            Instruction::XOR(target) => self.xor(target),
+            Instruction::OR(target) => self.or(target),
+            Instruction::CP(target) => self.cp(target),
+
             Instruction::JP(test) => self.jump(test),
             Instruction::LD(load_type) => self.load(load_type),
             Instruction::PUSH(target) => self.push(target),
@@ -1181,67 +1189,233 @@ impl CPU {
         SUB and SBC instruction
         Subtracts the target value (and carry flag for SBC) from register A or HL depending on instruction.
     */
-    fn sub(&mut self, target: ArithmeticType, carry: bool) -> usize {
-        let mut cycles = 4; // Default number of cycles for ADD instruction
+    fn sub(&mut self, target: ByteTarget, carry: bool) -> usize {
+        let mut cycles = 4;
+        let value: u8;
+        match target {
+            ByteTarget::A => { value = self.registers.a; },
+            ByteTarget::B => { value = self.registers.b; },
+            ByteTarget::C => { value = self.registers.c; },
+            ByteTarget::D => { value = self.registers.d; },
+            ByteTarget::E => { value = self.registers.e; },
+            ByteTarget::H => { value = self.registers.h; },
+            ByteTarget::L => { value = self.registers.l; },
+            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
+            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        }
+        if carry { value += self.registers.f.carry as u8; }
+        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+
+        // Carry bit is set if subtraction has to borrow
+        self.registers.f.zero = new_value == 0;
+        self.registers.f.subtract = true;
+        self.registers.f.carry = value > self.registers.a;
+        self.registers.f.half_carry = (value & 0x0F) > (self.registers.a & 0x0F);
+
+        self.registers.a = new_value;
+
+        cycles
+    }
+
+    /*
+        INC instruction
+        Increments target register by 1
+    */
+    fn inc(&mut self, target: ArithmeticType) -> usize {
+        let cycles = 4;
         match target {
             ArithmeticType::Byte(byte_target) => {
-                let value: u8;
+                let location: &u8;
                 match byte_target {
-                    ByteTarget::A => { value = self.registers.a; },
-                    ByteTarget::B => { value = self.registers.b; },
-                    ByteTarget::C => { value = self.registers.c; },
-                    ByteTarget::D => { value = self.registers.d; },
-                    ByteTarget::E => { value = self.registers.e; },
-                    ByteTarget::H => { value = self.registers.h; },
-                    ByteTarget::L => { value = self.registers.l; },
-                    ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
-                    ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+                    ByteTarget::A => location = &self.registers.a,
+                    ByteTarget::B => location = &self.registers.b,
+                    ByteTarget::C => location = &self.registers.c,
+                    ByteTarget::D => location = &self.registers.d,
+                    ByteTarget::E => location = &self.registers.e,
+                    ByteTarget::H => location = &self.registers.h,
+                    ByteTarget::L => location = &self.registers.l,
+                    ByteTarget::HLI => location = &self.bus.read_byte(self.registers.get_hl()),
+                    _ => panic!("Got invalid INC instruction")
                 }
-                if carry { value += self.registers.f.carry as u8; }
-                let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+                let new_value = location.wrapping_add(1);
 
-                // Half carry is set if bit 3 overflows
                 self.registers.f.zero = new_value == 0;
-                self.registers.f.carry = value > self.registers.a;
-                self.registers.f.half_carry = (value & 0x0F) > (self.registers.a & 0x0F);
+                self.registers.f.subtract = false;
+                self.registers.f.half_carry = (location & 0x0F) + (new_value & 0x0F) > 0x0F;
 
-                self.registers.a = new_value;
-
+                *location = new_value;
             },
             ArithmeticType::Word(word_target) => {
-                cycles = 8;
-                let value: u16;
+                let location: &u16;
                 match word_target {
-                    WordTarget::BC => { value = self.registers.get_bc() },
-                    WordTarget::DE => { value = self.registers.get_de() },
-                    WordTarget::HL => { value = self.registers.get_hl() },
-                    WordTarget::SP => { value = self.registers.get_af() },
+                    WordTarget::BC => location = &self.registers.get_bc(), // TODO pretty sure this doesn't work
+                    WordTarget::DE => location = &self.registers.get_de(),
+                    WordTarget::HL => location = &self.registers.get_hl(),
+                    WordTarget::SP => location = &self.sp,
                 }
-                if carry { value += self.registers.f.carry as u16; }
-                let (new_value, did_overflow) = self.registers.get_hl().overflowing_sub(value);
-
-                // Half-carry is set if bit 11 overflows
-                self.registers.f.carry = did_overflow;
-                self.registers.f.half_carry = (self.registers.get_hl() & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
-
-                self.registers.set_hl(new_value)
+                let new_value = location.wrapping_add(1);
+                *location = new_value;
             },
-            ArithmeticType::SP => {
-                cycles = 16;
-                let value = self.read_next_byte() as i8 as u16;
-                if carry { value += self.registers.f.carry as u16; }
-                let (new_value, _) = self.sp.overflowing_add(value);
-
-                // Instruction sets carry bit if overflow occured on bit 7, thus did_overflow can't be used here
-                self.registers.f.carry = (self.sp & 0x00FF) + (value & 0x00FF) > 0x00FF;
-                self.registers.f.half_carry = (self.sp & 0x000F) + (value & 0x000F) > 0x000F;
-
-                self.sp = new_value;
-            },
+            _ => panic!("Got invalid INC instruction"),
         }
 
-        // Last flag common for all cases
+        cycles
+    }
+
+    /*
+        DEC instruction
+        Decrements target register by 1
+    */
+    fn dec(&mut self, target: ArithmeticType) -> usize {
+        let cycles = 4;
+        match target {
+            ArithmeticType::Byte(byte_target) => {
+                let location: &u8;
+                match byte_target {
+                    ByteTarget::A => location = &self.registers.a,
+                    ByteTarget::B => location = &self.registers.b,
+                    ByteTarget::C => location = &self.registers.c,
+                    ByteTarget::D => location = &self.registers.d,
+                    ByteTarget::E => location = &self.registers.e,
+                    ByteTarget::H => location = &self.registers.h,
+                    ByteTarget::L => location = &self.registers.l,
+                    ByteTarget::HLI => location = &self.bus.read_byte(self.registers.get_hl()),
+                    _ => panic!("Got invalid DEC instruction")
+                }
+                let new_value = location.wrapping_sub(1);
+
+                self.registers.f.zero = new_value == 0;
+                self.registers.f.subtract = true;
+                self.registers.f.half_carry = (new_value & 0x0F) > (location & 0x0F);
+
+                *location = new_value;
+            },
+            ArithmeticType::Word(word_target) => {
+                let location: &u16;
+                match word_target {
+                    WordTarget::BC => location = &self.registers.get_bc(), // TODO pretty sure this doesn't work
+                    WordTarget::DE => location = &self.registers.get_de(),
+                    WordTarget::HL => location = &self.registers.get_hl(),
+                    WordTarget::SP => location = &self.sp,
+                }
+                let new_value = location.wrapping_sub(1);
+                *location = new_value;
+            },
+            _ => panic!("Got invalid DEC instruction"),
+        }
+
+        cycles
+    }
+
+    /*
+        AND instruction
+        Performs bitwise AND between target value and register A and stores the result in A
+    */
+    fn and(&mut self, target: ByteTarget) -> usize {
+        let cycles = 4;
+        let value: u8;
+        match target {
+            ByteTarget::A => { value = self.registers.a; },
+            ByteTarget::B => { value = self.registers.b; },
+            ByteTarget::C => { value = self.registers.c; },
+            ByteTarget::D => { value = self.registers.d; },
+            ByteTarget::E => { value = self.registers.e; },
+            ByteTarget::H => { value = self.registers.h; },
+            ByteTarget::L => { value = self.registers.l; },
+            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
+            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        };
+        self.registers.a = self.registers.a & value;
+
+        self.registers.f.zero = self.registers.a == 0;
+        self.registers.f.subtract = false;
+        self.registers.f.carry = false;
+        self.registers.f.half_carry = true;
+
+        cycles
+    }
+
+    /*
+        XOR instruction
+        Performs bitwise XOR between target value and register A and stores the result in A
+    */
+    fn xor(&mut self, target: ByteTarget) -> usize {
+        let cycles = 4;
+        let value: u8;
+        match target {
+            ByteTarget::A => { value = self.registers.a; },
+            ByteTarget::B => { value = self.registers.b; },
+            ByteTarget::C => { value = self.registers.c; },
+            ByteTarget::D => { value = self.registers.d; },
+            ByteTarget::E => { value = self.registers.e; },
+            ByteTarget::H => { value = self.registers.h; },
+            ByteTarget::L => { value = self.registers.l; },
+            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
+            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        };
+        self.registers.a = self.registers.a ^ value;
+
+        self.registers.f.zero = self.registers.a == 0;
+        self.registers.f.subtract = false;
+        self.registers.f.carry = false;
+        self.registers.f.half_carry = false;
+
+        cycles
+    }
+
+    /*
+        OR instruction
+        Performs bitwise OR between target value and register A and stores the result in A
+    */
+    fn or(&mut self, target: ByteTarget) -> usize {
+        let cycles = 4;
+        let value: u8;
+        match target {
+            ByteTarget::A => { value = self.registers.a; },
+            ByteTarget::B => { value = self.registers.b; },
+            ByteTarget::C => { value = self.registers.c; },
+            ByteTarget::D => { value = self.registers.d; },
+            ByteTarget::E => { value = self.registers.e; },
+            ByteTarget::H => { value = self.registers.h; },
+            ByteTarget::L => { value = self.registers.l; },
+            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
+            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        };
+        self.registers.a = self.registers.a | value;
+
+        self.registers.f.zero = self.registers.a == 0;
+        self.registers.f.subtract = false;
+        self.registers.f.carry = false;
+        self.registers.f.half_carry = false;
+
+        cycles
+    }
+
+    /*
+        CP instruction
+        Subtracts the target value from A and sets flags. Doesn't store the result. Used for comparison.
+    */
+    fn cp(&mut self, target: ByteTarget) -> usize {
+        let mut cycles = 4;
+        let value: u8;
+        match target {
+            ByteTarget::A => { value = self.registers.a; },
+            ByteTarget::B => { value = self.registers.b; },
+            ByteTarget::C => { value = self.registers.c; },
+            ByteTarget::D => { value = self.registers.d; },
+            ByteTarget::E => { value = self.registers.e; },
+            ByteTarget::H => { value = self.registers.h; },
+            ByteTarget::L => { value = self.registers.l; },
+            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
+            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        }
+        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+
+        // Carry bit is set if subtraction has to borrow
+        self.registers.f.zero = new_value == 0;
         self.registers.f.subtract = true;
+        self.registers.f.carry = value > self.registers.a;
+        self.registers.f.half_carry = (value & 0x0F) > (self.registers.a & 0x0F);
 
         cycles
     }
