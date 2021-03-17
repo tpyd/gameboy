@@ -321,12 +321,7 @@ enum LoadWordSource { SP, D16 }
 enum LoadMemoryLocation { BC, DE, HLpostinc, HLpredec }
 enum ByteAddress { C, D8 }
 
-enum StackTarget {
-    AF,
-    BC,
-    DE,
-    HL,
-}
+enum StackTarget { AF, BC, DE, HL }
 
 enum RSTVec {
     h00,
@@ -1095,6 +1090,7 @@ impl CPU {
 
             Instruction::PUSH(target) => self.push(target),
             Instruction::POP(target) => self.pop(target),
+
             Instruction::CALL(test) => self.call(test),
             Instruction::RET(test) => self.ret(test),
             Instruction::NOP => { self.read_next_byte(); 4 },
@@ -1591,10 +1587,11 @@ impl CPU {
             StackTarget::HL => self.registers.get_hl(),
         };
         self.push_value(value);
-        self.pc.wrapping_add(1)
+
+        16
     }
 
-    // Separate function for pushing a value to the stack
+    // Separate method for pushing a value to the stack
     fn push_value(&mut self, value: u16) {
         self.sp = self.sp.wrapping_sub(1);
         self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
@@ -1610,13 +1607,21 @@ impl CPU {
     fn pop(&mut self, target: StackTarget) -> usize {
         let value = self.pop_value();
         match target {
-            StackTarget::AF => self.registers.set_af(value),
+            StackTarget::AF => {
+                self.registers.set_af(value);
+
+                // AF sets flags for some reason
+                self.registers.f.zero = value & 0x80 != 0;
+                self.registers.f.subtract = value & 0x40 != 0;
+                self.registers.f.carry = value & 0x20 != 0;
+                self.registers.f.half_carry = value & 0x10 != 0;
+            }
             StackTarget::BC => self.registers.set_bc(value),
             StackTarget::DE => self.registers.set_de(value),
             StackTarget::HL => self.registers.set_hl(value),
         };
 
-        self.pc.wrapping_add(1)
+        12
     }
 
     // Separate function for popping a value from the stack
