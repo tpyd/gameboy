@@ -1003,6 +1003,7 @@ struct CPU {
     sp: u16, // Stack pointer, points to the top of the stack
     bus: MemoryBus,
     is_halted: bool,
+    ime: bool,
 }
 
 impl CPU {
@@ -1013,6 +1014,7 @@ impl CPU {
             sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
             bus: MemoryBus::new(),
             is_halted: false,
+            ime: true,
         }
     }
 
@@ -1092,7 +1094,9 @@ impl CPU {
             Instruction::POP(target) => self.pop(target),
 
             Instruction::CALL(test) => self.call(test),
-            Instruction::RET(test) => self.ret(test),
+            Instruction::RET(test) => self.ret(test, false),
+            Instruction::RETI => self.ret(JumpCondition::Always, true),
+
             Instruction::NOP => { self.read_next_byte(); 4 },
             Instruction::HALT => { self.is_halted = true; 4 },
             _ => {panic!("Instruction not found")} // TODO add more instructions
@@ -1640,43 +1644,51 @@ impl CPU {
         Calls a function by setting the pc to the address given by the next 2 bytes
     */
     fn call(&mut self, test: JumpCondition) -> usize {
+        let cycles = 12;
         let jump_condition = match test {
             JumpCondition::NotZero => !self.registers.f.zero,
             JumpCondition::NotCarry => !self.registers.f.carry,
             JumpCondition::Zero => self.registers.f.zero,
             JumpCondition::Carry => self.registers.f.carry,
             JumpCondition::Always => true,
-            _ => panic!("Invalid JP call 'JumpCondition::AlwaysHL'"),
         };
 
-        let next_pc = self.pc.wrapping_add(3); // Jump past address when returning from call
         if jump_condition {
-            self.push_value(next_pc);
-            self.read_next_word()
-        } else {
-            next_pc
+            cycles = 24;
+            let new_pc = self.read_next_word();
+            self.push_value(self.pc);
+            self.pc = new_pc;
         }
+
+        cycles
     }
 
     /*
         RET instruction
         Returns from the function call.
     */
-    fn ret(&mut self, test: JumpCondition) -> usize {
+    fn ret(&mut self, test: JumpCondition, enable_interrupts: bool) -> usize {
+        let cycles = 8;
         let jump_condition = match test {
             JumpCondition::NotZero => !self.registers.f.zero,
             JumpCondition::NotCarry => !self.registers.f.carry,
             JumpCondition::Zero => self.registers.f.zero,
             JumpCondition::Carry => self.registers.f.carry,
             JumpCondition::Always => true,
-            _ => unimplemented!(),
         }; // TODO make this into a method on the JumpCondition enum maybe? not sure how due to self.register
 
         if jump_condition {
-            self.pop_value()
-        } else {
-            self.pc.wrapping_add(1)
+            cycles = 20;
+            self.pc = self.pop_value();
         }
+        if let JumpCondition::Always = test {cycles = 16}
+
+        // TODO swap this out with a call to EI instruction
+        if enable_interrupts {
+            self.ime = true;
+        }
+
+        cycles
     }
 
     // Increments the pc and reads the next byte
