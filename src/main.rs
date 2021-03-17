@@ -303,38 +303,23 @@ enum WordTarget { BC, DE, HL, SP }
 enum JumpType { Word(JumpCondition), Address }
 enum JumpCondition { NotZero, Zero, NotCarry, Carry, Always }
 
-enum LoadByteTarget {
-    A, B, C, D, E, H, L, HLI,
-}
-
-enum LoadByteSource {
-    A, B, C, D, E, H, L, D8, HLI, // D8 means next byte
-}
-
-enum LoadWordTarget {
-    BC, DE, HL, SP, D16, HLI, // D16 means next word
-}
-
-enum LoadWordSource {
-    BC, DE, HL, SP, D16, HLI, SPi8
-}
-
-enum LoadMemoryLocation {
-    BC, DE, HLpostinc, HLpredec,
-}
-
 enum LoadType {
     Byte(LoadByteTarget, LoadByteSource),
     Word(LoadWordTarget, LoadWordSource),
     AFromIndirect(LoadMemoryLocation), // Load memory location into A
     IndirectFromA(LoadMemoryLocation), // Load A into memory location
-    AFromByteAddress(ByteAddress), // Address FF00+u8
-    ByteAddressFromA(ByteAddress),
+    AFromByteAddress(ByteAddress), // Load IO location into A
+    ByteAddressFromA(ByteAddress), // Load A into IO location
+    SPFromHL, // Load HL into SP
+    HLFromSP, // Load SP+i8 into HL
 }
 
-enum ByteAddress {
-    C, D8
-}
+enum LoadByteTarget { A, B, C, D, E, H, L, HLI }
+enum LoadByteSource { A, B, C, D, E, H, L, D8, HLI }
+enum LoadWordTarget { BC, DE, HL, SP, D16, HLI }
+enum LoadWordSource { SP, D16 }
+enum LoadMemoryLocation { BC, DE, HLpostinc, HLpredec }
+enum ByteAddress { C, D8 }
 
 enum StackTarget {
     AF,
@@ -461,7 +446,7 @@ impl Instruction {
             0x21 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HL, LoadWordSource::D16))),
             0x31 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::SP, LoadWordSource::D16))),
             0x08 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::D16, LoadWordSource::SP))),
-            0xF9 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::SP, LoadWordSource::HL))),
+            0xF9 => Some(Instruction::LD(LoadType::SPFromHL)),
 
             0xEA => Some(Instruction::LD(LoadType::Word(LoadWordTarget::D16, LoadWordSource::HLI))),
             0xFA => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HLI, LoadWordSource::D16))),
@@ -471,7 +456,7 @@ impl Instruction {
             0xE2 => Some(Instruction::LD(LoadType::ByteAddressFromA(ByteAddress::C))),
             0xF2 => Some(Instruction::LD(LoadType::AFromByteAddress(ByteAddress::C))),
 
-            0xF8 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HL, LoadWordSource::SPi8))),
+            0xF8 => Some(Instruction::LD(LoadType::HLFromSP)),
 
             // Increment and decrement instructions
             0x04 => Some(Instruction::INC(ArithmeticType::Byte(ByteTarget::B))),
@@ -1104,7 +1089,10 @@ impl CPU {
             Instruction::CP(target) => self.cp(target),
 
             Instruction::JP(test) => self.jump(test),
+            Instruction::JR(test) => self.jump_relative(test),
+
             Instruction::LD(load_type) => self.load(load_type),
+
             Instruction::PUSH(target) => self.push(target),
             Instruction::POP(target) => self.pop(target),
             Instruction::CALL(test) => self.call(test),
@@ -1455,10 +1443,35 @@ impl CPU {
     }
 
     /*
+        JR instruction
+        Reads the next byte as i8 and jumps to pc + i8 if jump condition is set
+    */
+    fn jump_relative(&mut self, jump_condition: JumpCondition) -> usize {
+        let mut cycles = 8;
+        let relative_val = self.read_next_byte() as i8 as u16;
+
+        let jump = match jump_condition {
+            JumpCondition::NotZero => !self.registers.f.zero,
+            JumpCondition::NotCarry => !self.registers.f.carry,
+            JumpCondition::Zero => self.registers.f.zero,
+            JumpCondition::Carry => self.registers.f.carry,
+            JumpCondition::Always => true,
+        };
+
+        if jump {
+            self.pc.wrapping_add(relative_val);
+            cycles = 12;
+        }
+
+        cycles
+    }
+
+    /*
         LD instruction
         Loads either from memory into registers or vice versa
     */
     fn load(&mut self, load_type: LoadType) -> usize {
+        let mut cycles = 4;
         match load_type {
             LoadType::Byte(target, source) => {
                 let source_value = match source {
@@ -1469,8 +1482,8 @@ impl CPU {
                     LoadByteSource::E => self.registers.e,
                     LoadByteSource::H => self.registers.h,
                     LoadByteSource::L => self.registers.l,
-                    LoadByteSource::D8 => self.read_next_byte(),
-                    LoadByteSource::HLI => self.bus.read_byte(self.registers.get_hl()),
+                    LoadByteSource::D8 => { cycles += 4; self.read_next_byte() },
+                    LoadByteSource::HLI => { cycles += 4; self.bus.read_byte(self.registers.get_hl()) },
                 };
                 match target {
                     LoadByteTarget::A => self.registers.a = source_value,
@@ -1480,16 +1493,90 @@ impl CPU {
                     LoadByteTarget::E => self.registers.e = source_value,
                     LoadByteTarget::H => self.registers.h = source_value,
                     LoadByteTarget::L => self.registers.l = source_value,
-                    LoadByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+                    LoadByteTarget::HLI => { cycles += 4; self.bus.write_byte(self.registers.get_hl(), source_value) },
                 };
-                match source {
-                    // D8 reads next byte, so pc needs to skip it
-                    LoadByteSource::D8 => self.pc.wrapping_add(2),
-                    _                  => self.pc.wrapping_add(1)
+            },
+            LoadType::Word(target, source) => {
+                cycles = 12;
+                let source_value = match source {
+                    LoadWordSource::D16 => self.read_next_word(),
+                    LoadWordSource::SP => self.sp,
+                };
+                match target {
+                    LoadWordTarget::BC => self.registers.set_bc(source_value),
+                    LoadWordTarget::DE => self.registers.set_bc(source_value),
+                    LoadWordTarget::HL => self.registers.set_bc(source_value),
+                    LoadWordTarget::SP => self.sp = source_value,
+                    LoadWordTarget::HLI => { self.bus.write_byte(self.read_next_word(), (source_value & 0x00FF) as u8); cycles = 20 },
                 }
             },
-            _ => unimplemented!(),
+            LoadType::AFromIndirect(target) => {
+                cycles = 8;
+                let source_value = self.registers.a;
+                match target {
+                    LoadMemoryLocation::BC => self.bus.write_byte(self.registers.get_bc(), source_value),
+                    LoadMemoryLocation::DE => self.bus.write_byte(self.registers.get_de(), source_value),
+                    LoadMemoryLocation::HLpostinc => {
+                        self.bus.write_byte(self.registers.get_hl(), source_value);
+                        self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
+                    },
+                    LoadMemoryLocation::HLpredec => {
+                        self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
+                        self.bus.write_byte(self.registers.get_hl(), source_value);
+                    },
+                }
+            },
+            LoadType::IndirectFromA(source) => {
+                cycles = 8;
+                let source_value = match source {
+                    LoadMemoryLocation::BC => self.bus.read_byte(self.registers.get_bc()),
+                    LoadMemoryLocation::DE => self.bus.read_byte(self.registers.get_de()),
+                    LoadMemoryLocation::HLpostinc => {
+                        let value = self.bus.read_byte(self.registers.get_hl());
+                        self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
+                        value
+                    },
+                    LoadMemoryLocation::HLpredec => {
+                        self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
+                        self.bus.read_byte(self.registers.get_hl())
+                    }
+                };
+                self.registers.a = source_value;
+            },
+            LoadType::AFromByteAddress(source) => {
+                cycles = 8;
+                let source_value = match source {
+                    ByteAddress::D8 => { cycles = 12; self.bus.read_byte(0xFF00 + self.read_next_byte() as u16) },
+                    ByteAddress::C => self.bus.read_byte(0xFF00 + self.registers.c as u16),
+                };
+                self.registers.a = source_value;
+            },
+            LoadType::ByteAddressFromA(target) => {
+                cycles = 8;
+                let source_value = self.registers.a;
+                match target {
+                    ByteAddress::D8 => { cycles = 12; self.bus.write_byte(0xFF00 + self.read_next_byte() as u16, source_value) },
+                    ByteAddress::C => self.bus.write_byte(0xFF00 + self.registers.c as u16, source_value),
+                }
+            },
+            LoadType::HLFromSP => {
+                cycles = 12;
+                let next_byte = self.read_next_byte() as i8 as u16;
+                let source_value = self.sp + next_byte;
+                self.registers.set_hl(source_value);
+
+                self.registers.f.zero = false;
+                self.registers.f.subtract = false;
+                self.registers.f.carry = (self.sp & 0x00FF) + (next_byte & 0x00FF) > 0x00FF;
+                self.registers.f.half_carry = (self.sp & 0x000F) + (next_byte & 0x000F) > 0x000F;
+            },
+            LoadType::SPFromHL => {
+                cycles = 8;
+                self.sp = self.registers.get_hl();
+            }
         }
+
+        cycles
     }
 
     /*
