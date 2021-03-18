@@ -316,10 +316,10 @@ enum LoadType {
 
 enum LoadByteTarget { A, B, C, D, E, H, L, HLI }
 enum LoadByteSource { A, B, C, D, E, H, L, D8, HLI }
-enum LoadWordTarget { BC, DE, HL, SP, D16, HLI }
+enum LoadWordTarget { BC, DE, HL, SP, D16 }
 enum LoadWordSource { SP, D16 }
 enum LoadMemoryLocation { BC, DE, HLpostinc, HLpredec }
-enum ByteAddress { C, D8 }
+enum ByteAddress { C, D8, D16 }
 
 enum StackTarget { AF, BC, DE, HL }
 
@@ -443,8 +443,8 @@ impl Instruction {
             0x08 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::D16, LoadWordSource::SP))),
             0xF9 => Some(Instruction::LD(LoadType::SPFromHL)),
 
-            0xEA => Some(Instruction::LD(LoadType::Word(LoadWordTarget::D16, LoadWordSource::HLI))),
-            0xFA => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HLI, LoadWordSource::D16))),
+            0xEA => Some(Instruction::LD(LoadType::ByteAddressFromA(ByteAddress::D16))),
+            0xFA => Some(Instruction::LD(LoadType::AFromByteAddress(ByteAddress::D16))),
 
             0xE0 => Some(Instruction::LD(LoadType::ByteAddressFromA(ByteAddress::D8))),
             0xF0 => Some(Instruction::LD(LoadType::AFromByteAddress(ByteAddress::D8))),
@@ -1112,7 +1112,7 @@ impl CPU {
         let mut cycles = 4; // Default number of cycles for ADD instruction
         match target {
             ArithmeticType::Byte(byte_target) => {
-                let value: u8;
+                let mut value: u8;
                 match byte_target {
                     ByteTarget::A => { value = self.registers.a; },
                     ByteTarget::B => { value = self.registers.b; },
@@ -1137,7 +1137,7 @@ impl CPU {
             },
             ArithmeticType::Word(word_target) => {
                 cycles = 8;
-                let value: u16;
+                let mut value: u16;
                 match word_target {
                     WordTarget::BC => { value = self.registers.get_bc() },
                     WordTarget::DE => { value = self.registers.get_de() },
@@ -1155,7 +1155,7 @@ impl CPU {
             },
             ArithmeticType::SP => {
                 cycles = 16;
-                let value = self.read_next_byte() as i8 as u16;
+                let mut value = self.read_next_byte() as i8 as u16;
                 if carry { value += self.registers.f.carry as u16; }
                 let (new_value, _) = self.sp.overflowing_add(value);
 
@@ -1179,7 +1179,7 @@ impl CPU {
     */
     fn sub(&mut self, target: ByteTarget, carry: bool) -> usize {
         let mut cycles = 4;
-        let value: u8;
+        let mut value: u8;
         match target {
             ByteTarget::A => { value = self.registers.a; },
             ByteTarget::B => { value = self.registers.b; },
@@ -1192,7 +1192,7 @@ impl CPU {
             ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
         }
         if carry { value += self.registers.f.carry as u8; }
-        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+        let new_value = self.registers.a.wrapping_sub(value);
 
         // Carry bit is set if subtraction has to borrow
         self.registers.f.zero = new_value == 0;
@@ -1213,36 +1213,33 @@ impl CPU {
         let cycles = 4;
         match target {
             ArithmeticType::Byte(byte_target) => {
-                let location: &u8;
-                match byte_target {
-                    ByteTarget::A => location = &self.registers.a,
-                    ByteTarget::B => location = &self.registers.b,
-                    ByteTarget::C => location = &self.registers.c,
-                    ByteTarget::D => location = &self.registers.d,
-                    ByteTarget::E => location = &self.registers.e,
-                    ByteTarget::H => location = &self.registers.h,
-                    ByteTarget::L => location = &self.registers.l,
-                    ByteTarget::HLI => location = &self.bus.read_byte(self.registers.get_hl()),
+                let new_value = match byte_target {
+                    ByteTarget::A => { self.registers.a = self.registers.a.wrapping_add(1); self.registers.a },
+                    ByteTarget::B => { self.registers.b = self.registers.b.wrapping_add(1); self.registers.b },
+                    ByteTarget::C => { self.registers.c = self.registers.c.wrapping_add(1); self.registers.c },
+                    ByteTarget::D => { self.registers.d = self.registers.d.wrapping_add(1); self.registers.d },
+                    ByteTarget::E => { self.registers.e = self.registers.e.wrapping_add(1); self.registers.e },
+                    ByteTarget::H => { self.registers.h = self.registers.h.wrapping_add(1); self.registers.h },
+                    ByteTarget::L => { self.registers.l = self.registers.l.wrapping_add(1); self.registers.l },
+                    ByteTarget::HLI => {
+                        let value = self.bus.read_byte(self.registers.get_hl()).wrapping_add(1);
+                        self.bus.write_byte(self.registers.get_hl(), value);
+                        value
+                    },
                     _ => panic!("Got invalid INC instruction")
-                }
-                let new_value = location.wrapping_add(1);
+                };
 
                 self.registers.f.zero = new_value == 0;
                 self.registers.f.subtract = false;
-                self.registers.f.half_carry = (location & 0x0F) + (new_value & 0x0F) > 0x0F;
-
-                *location = new_value;
+                self.registers.f.half_carry = (new_value.wrapping_sub(1) & 0x0F) + (new_value & 0x0F) > 0x0F;
             },
             ArithmeticType::Word(word_target) => {
-                let location: &u16;
                 match word_target {
-                    WordTarget::BC => location = &self.registers.get_bc(), // TODO pretty sure this doesn't work
-                    WordTarget::DE => location = &self.registers.get_de(),
-                    WordTarget::HL => location = &self.registers.get_hl(),
-                    WordTarget::SP => location = &self.sp,
+                    WordTarget::BC => self.registers.set_bc(self.registers.get_bc().wrapping_add(1)),
+                    WordTarget::DE => self.registers.set_de(self.registers.get_de().wrapping_add(1)),
+                    WordTarget::HL => self.registers.set_hl(self.registers.get_hl().wrapping_add(1)),
+                    WordTarget::SP => self.sp = self.sp.wrapping_add(1),
                 }
-                let new_value = location.wrapping_add(1);
-                *location = new_value;
             },
             _ => panic!("Got invalid INC instruction"),
         }
@@ -1258,36 +1255,33 @@ impl CPU {
         let cycles = 4;
         match target {
             ArithmeticType::Byte(byte_target) => {
-                let location: &u8;
-                match byte_target {
-                    ByteTarget::A => location = &self.registers.a,
-                    ByteTarget::B => location = &self.registers.b,
-                    ByteTarget::C => location = &self.registers.c,
-                    ByteTarget::D => location = &self.registers.d,
-                    ByteTarget::E => location = &self.registers.e,
-                    ByteTarget::H => location = &self.registers.h,
-                    ByteTarget::L => location = &self.registers.l,
-                    ByteTarget::HLI => location = &self.bus.read_byte(self.registers.get_hl()),
+                let new_value = match byte_target {
+                    ByteTarget::A => { self.registers.a = self.registers.a.wrapping_sub(1); self.registers.a },
+                    ByteTarget::B => { self.registers.b = self.registers.b.wrapping_sub(1); self.registers.b },
+                    ByteTarget::C => { self.registers.c = self.registers.c.wrapping_sub(1); self.registers.c },
+                    ByteTarget::D => { self.registers.d = self.registers.d.wrapping_sub(1); self.registers.d },
+                    ByteTarget::E => { self.registers.e = self.registers.e.wrapping_sub(1); self.registers.e },
+                    ByteTarget::H => { self.registers.h = self.registers.h.wrapping_sub(1); self.registers.h },
+                    ByteTarget::L => { self.registers.l = self.registers.l.wrapping_sub(1); self.registers.l },
+                    ByteTarget::HLI => {
+                        let value = self.bus.read_byte(self.registers.get_hl()).wrapping_sub(1);
+                        self.bus.write_byte(self.registers.get_hl(), value);
+                        value
+                    },
                     _ => panic!("Got invalid DEC instruction")
-                }
-                let new_value = location.wrapping_sub(1);
+                };
 
                 self.registers.f.zero = new_value == 0;
                 self.registers.f.subtract = true;
-                self.registers.f.half_carry = (new_value & 0x0F) > (location & 0x0F);
-
-                *location = new_value;
+                self.registers.f.half_carry = (new_value & 0x0F) > (new_value.wrapping_add(1) & 0x0F);
             },
             ArithmeticType::Word(word_target) => {
-                let location: &u16;
                 match word_target {
-                    WordTarget::BC => location = &self.registers.get_bc(), // TODO pretty sure this doesn't work
-                    WordTarget::DE => location = &self.registers.get_de(),
-                    WordTarget::HL => location = &self.registers.get_hl(),
-                    WordTarget::SP => location = &self.sp,
+                    WordTarget::BC => self.registers.set_bc(self.registers.get_bc().wrapping_sub(1)),
+                    WordTarget::DE => self.registers.set_de(self.registers.get_de().wrapping_sub(1)),
+                    WordTarget::HL => self.registers.set_hl(self.registers.get_hl().wrapping_sub(1)),
+                    WordTarget::SP => self.sp = self.sp.wrapping_sub(1),
                 }
-                let new_value = location.wrapping_sub(1);
-                *location = new_value;
             },
             _ => panic!("Got invalid DEC instruction"),
         }
@@ -1300,7 +1294,7 @@ impl CPU {
         Performs bitwise AND between target value and register A and stores the result in A
     */
     fn and(&mut self, target: ByteTarget) -> usize {
-        let cycles = 4;
+        let mut cycles = 4;
         let value: u8;
         match target {
             ByteTarget::A => { value = self.registers.a; },
@@ -1328,7 +1322,7 @@ impl CPU {
         Performs bitwise XOR between target value and register A and stores the result in A
     */
     fn xor(&mut self, target: ByteTarget) -> usize {
-        let cycles = 4;
+        let mut cycles = 4;
         let value: u8;
         match target {
             ByteTarget::A => { value = self.registers.a; },
@@ -1356,7 +1350,7 @@ impl CPU {
         Performs bitwise OR between target value and register A and stores the result in A
     */
     fn or(&mut self, target: ByteTarget) -> usize {
-        let cycles = 4;
+        let mut cycles = 4;
         let value: u8;
         match target {
             ByteTarget::A => { value = self.registers.a; },
@@ -1397,7 +1391,7 @@ impl CPU {
             ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
             ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
         }
-        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+        let new_value = self.registers.a.wrapping_sub(value);
 
         // Carry bit is set if subtraction has to borrow
         self.registers.f.zero = new_value == 0;
@@ -1507,7 +1501,11 @@ impl CPU {
                     LoadWordTarget::DE => self.registers.set_bc(source_value),
                     LoadWordTarget::HL => self.registers.set_bc(source_value),
                     LoadWordTarget::SP => self.sp = source_value,
-                    LoadWordTarget::HLI => { self.bus.write_byte(self.read_next_word(), (source_value & 0x00FF) as u8); cycles = 20 },
+                    LoadWordTarget::D16 => {
+                        let word = self.read_next_word();
+                        self.bus.write_byte(word, (source_value & 0x00FF) as u8);
+                        cycles = 20
+                    }
                 }
             },
             LoadType::AFromIndirect(target) => {
@@ -1546,8 +1544,13 @@ impl CPU {
             LoadType::AFromByteAddress(source) => {
                 cycles = 8;
                 let source_value = match source {
-                    ByteAddress::D8 => { cycles = 12; self.bus.read_byte(0xFF00 + self.read_next_byte() as u16) },
+                    ByteAddress::D8 => {
+                        cycles = 12;
+                        let byte = self.read_next_byte();
+                        self.bus.read_byte(0xFF00 + byte as u16)
+                    },
                     ByteAddress::C => self.bus.read_byte(0xFF00 + self.registers.c as u16),
+                    ByteAddress::D16 => { let word = self.read_next_word(); self.bus.read_byte(word) },
                 };
                 self.registers.a = source_value;
             },
@@ -1555,8 +1558,13 @@ impl CPU {
                 cycles = 8;
                 let source_value = self.registers.a;
                 match target {
-                    ByteAddress::D8 => { cycles = 12; self.bus.write_byte(0xFF00 + self.read_next_byte() as u16, source_value) },
+                    ByteAddress::D8 => {
+                        cycles = 12;
+                        let byte = self.read_next_byte();
+                        self.bus.write_byte(0xFF00 + byte as u16, source_value)
+                    },
                     ByteAddress::C => self.bus.write_byte(0xFF00 + self.registers.c as u16, source_value),
+                    ByteAddress::D16 => { let word = self.read_next_word(); self.bus.write_byte(word, source_value) },
                 }
             },
             LoadType::HLFromSP => {
@@ -1644,7 +1652,7 @@ impl CPU {
         Calls a function by setting the pc to the address given by the next 2 bytes
     */
     fn call(&mut self, test: JumpCondition) -> usize {
-        let cycles = 12;
+        let mut cycles = 12;
         let jump_condition = match test {
             JumpCondition::NotZero => !self.registers.f.zero,
             JumpCondition::NotCarry => !self.registers.f.carry,
@@ -1668,7 +1676,7 @@ impl CPU {
         Returns from the function call.
     */
     fn ret(&mut self, test: JumpCondition, enable_interrupts: bool) -> usize {
-        let cycles = 8;
+        let mut cycles = 8;
         let jump_condition = match test {
             JumpCondition::NotZero => !self.registers.f.zero,
             JumpCondition::NotCarry => !self.registers.f.carry,
