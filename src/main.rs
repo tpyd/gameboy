@@ -324,14 +324,14 @@ enum ByteAddress { C, D8, D16 }
 enum StackTarget { AF, BC, DE, HL }
 
 enum RSTVec {
-    h00,
-    h10,
-    h20,
-    h30,
-    h08,
-    h18,
-    h28,
-    h38,
+    h00 = 0x00,
+    h10 = 0x10,
+    h20 = 0x20,
+    h30 = 0x30,
+    h08 = 0x08,
+    h18 = 0x18,
+    h28 = 0x28,
+    h38 = 0x38,
 }
 
 impl Instruction {
@@ -1085,20 +1085,28 @@ impl CPU {
             Instruction::OR(target) => self.or(target),
             Instruction::CP(target) => self.cp(target),
 
-            Instruction::JP(test) => self.jump(test),
-            Instruction::JR(test) => self.jump_relative(test),
+            Instruction::JP(condition) => self.jump(condition),
+            Instruction::JR(condition) => self.jump_relative(condition),
 
             Instruction::LD(load_type) => self.load(load_type),
 
             Instruction::PUSH(target) => self.push(target),
             Instruction::POP(target) => self.pop(target),
 
-            Instruction::CALL(test) => self.call(test),
-            Instruction::RET(test) => self.ret(test, false),
+            Instruction::CALL(condition) => self.call(condition),
+            Instruction::RET(condition) => self.ret(condition, false),
             Instruction::RETI => self.ret(JumpCondition::Always, true),
+            Instruction::RST(vec) => self.rst(vec),
 
+            Instruction::DAA => self.daa(),
+            Instruction::SCF => self.scf(),
+            Instruction::CPL => self.cpl(),
+            Instruction::CCF => self.ccf(),
+            Instruction::DI => self.di(),
+            Instruction::EI => self.ei(),
             Instruction::NOP => { self.read_next_byte(); 4 },
             Instruction::HALT => { self.is_halted = true; 4 },
+            Instruction::STOP => self.stop(),
             _ => {panic!("Instruction not found")} // TODO add more instructions
         }
     }
@@ -1453,7 +1461,7 @@ impl CPU {
         };
 
         if jump {
-            self.pc.wrapping_add(relative_val);
+            self.pc = self.pc.wrapping_add(relative_val);
             cycles = 12;
         }
 
@@ -1697,6 +1705,69 @@ impl CPU {
         }
 
         cycles
+    }
+
+    /*
+        RST instruction
+        Call to address vec. Faster than CALL, but for a limited amount of locations. Also called reset
+    */
+    fn rst(&mut self, vec: RSTVec) -> usize {
+        self.push_value(self.pc);
+        self.pc = 0x0000 + vec as u16;
+
+        16
+    }
+
+    /*
+        DAA instruction
+        Changes register A to contain a decimal number after an arithmetic operation.
+        For example: 15+27 = 3C, running DAA after changes it to 42.
+    */
+    fn daa(&mut self) -> usize {
+        let reg_a = self.registers.a;
+
+        if !self.registers.f.subtract {
+            // Lower nibble
+            if (reg_a & 0x0F) > 9 || self.registers.f.half_carry {
+                // larger than 9 means that it contains hex values (A, B, C...).
+                // Also have to add if lower nibble overflow occured.
+                // Add 6 to offset
+                reg_a += 0x06;
+            }
+
+            // Upper nibble
+            if (reg_a & 0xF0) > 0x90 || self.registers.f.carry {
+                reg_a += 0x60;
+                self.registers.f.carry = true;
+            }
+        } else {
+            // Same for subtraction, except we subtract 6
+            // Lower nibble
+            if (reg_a & 0x0F) > 0x09 || self.registers.f.half_carry {
+                reg_a -= 0x06;
+                if (reg_a & 0xF0) == 0xF0 {
+                    // Set carry flag if underflow occured
+                    self.registers.f.carry = true;
+                }
+            }
+
+            // Upper nibble
+            if (reg_a & 0xF0) > 0x90 || self.registers.f.carry {
+                reg_a -= 0x60;
+                self.registers.f.carry = true;
+            }
+        }
+
+        if reg_a == 0 {
+            self.registers.f.zero = true;
+        } else {
+            self.registers.f.zero = false;
+        }
+
+        self.registers.f.half_carry = false;
+        self.registers.a = reg_a;
+
+        4
     }
 
     // Increments the pc and reads the next byte
