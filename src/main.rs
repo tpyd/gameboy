@@ -1002,6 +1002,7 @@ struct CPU {
     pc: u16, // Program counter, tells which instruction its currently running
     sp: u16, // Stack pointer, points to the top of the stack
     bus: MemoryBus,
+    ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool,
 }
@@ -1013,6 +1014,7 @@ impl CPU {
             pc: 0x0000,
             sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
             bus: MemoryBus::new(),
+            ei_called: false,
             is_halted: false,
             ime: true,
         }
@@ -1045,7 +1047,17 @@ impl CPU {
 
         // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
         let cycles = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed) {
-            self.execute(instruction)
+            let c = self.execute(instruction);
+
+            // Enable interrupts if previous instruction call was EI
+            if self.ei_called {
+                match Instruction::from_byte(instruction_byte, prefixed).unwrap() {
+                    Instruction::EI => {}, // Makes repeated calls to EI work as one call
+                    _ => { self.ime = true; self.ei_called = false; },
+                }
+            }
+
+            c
         } else {
             let description = format!("0x{}{:x}", if prefixed { "cb" } else { "" }, instruction_byte);
             panic!("Unknown instruction found for: {}", description);
@@ -1107,7 +1119,7 @@ impl CPU {
             Instruction::NOP => { self.read_next_byte(); 4 },
             Instruction::HALT => { self.is_halted = true; 4 },
             Instruction::STOP => self.stop(),
-            _ => {panic!("Instruction not found")} // TODO add more instructions
+            _ => {panic!("Instruction not implemented")} // TODO add more instructions
         }
     }
 
@@ -1699,7 +1711,7 @@ impl CPU {
         }
         if let JumpCondition::Always = test {cycles = 16}
 
-        // TODO swap this out with a call to EI instruction
+        // Simpler than calling EI before RET
         if enable_interrupts {
             self.ime = true;
         }
@@ -1724,7 +1736,7 @@ impl CPU {
         For example: 15+27 = 3C, running DAA after changes it to 42.
     */
     fn daa(&mut self) -> usize {
-        let reg_a = self.registers.a;
+        let mut reg_a = self.registers.a;
 
         if !self.registers.f.subtract {
             // Lower nibble
@@ -1766,6 +1778,70 @@ impl CPU {
 
         self.registers.f.half_carry = false;
         self.registers.a = reg_a;
+
+        4
+    }
+
+    /*
+        SCF instruction
+        Sets the carry flag. Also resets N and H flags.
+    */
+    fn scf(&mut self) -> usize {
+        self.registers.f.subtract = false;
+        self.registers.f.half_carry = false;
+        self.registers.f.carry = true;
+
+        4
+    }
+
+    /**
+     * CPL instruction
+     * Complements accumulator (A = ~A)
+     */
+    fn cpl(&mut self) -> usize {
+        self.registers.a = self.registers.a.wrapping_neg();
+
+        4
+    }
+
+    /**
+     * CCF instruction
+     * Complements carry flag. Also resets N and H flags
+     */
+    fn ccf(&mut self) -> usize {
+        self.registers.f.subtract = false;
+        self.registers.f.half_carry = false;
+        self.registers.f.carry = !self.registers.f.carry;
+
+        4
+    }
+
+    /**
+     * DI instruction
+     * Disables interrupt by clearing IME flag.
+     */
+    fn di(&mut self) -> usize {
+        self.ime = false;
+
+        4
+    }
+
+    /**
+     * EI instruction
+     * Enables interrupt by setting IME flag. The flag is only set AFTER the instruction following EI
+     */
+    fn ei(&mut self) -> usize {
+        self.ei_called = true;
+
+        4
+    }
+
+    /**
+     * STOP instruction
+     * Enters CPU very low power mode.
+     */
+    fn stop(&mut self) -> usize{
+        // TODO find out if this does anything at all
 
         4
     }
