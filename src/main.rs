@@ -253,8 +253,8 @@ enum Instruction {
     RRCA, // Rotate A right
 
     RLC(ByteTarget),  // Rotate register left
-    RRC(ByteTarget),  // Rotate register right
     RL(ByteTarget),   // Rotate register left through carry
+    RRC(ByteTarget),  // Rotate register right
     RR(ByteTarget),   // Rotate register right through carry
     SLA(ByteTarget),  // Shift arithmetic register left
     SRA(ByteTarget),  // Shift arithmetic register right
@@ -1097,6 +1097,25 @@ impl CPU {
             Instruction::OR(target) => self.or(target),
             Instruction::CP(target) => self.cp(target),
 
+            Instruction::RLA => self.rotate(ByteTarget::A, true, true),
+            Instruction::RLCA => self.rotate(ByteTarget::A, false, true),
+            Instruction::RRA => self.rotate(ByteTarget::A, true, false),
+            Instruction::RRCA => self.rotate(ByteTarget::A, false, false),
+
+            Instruction::RLC(target) => self.rotate(target, false, true),
+            Instruction::RL(target) => self.rotate(target, true, true),
+            Instruction::RRC(target) => self.rotate(target, false, false),
+            Instruction::RR(target) => self.rotate(target, true, false),
+            /*
+            Instruction::SLA(ByteTarget),
+            Instruction::SRA(ByteTarget),
+            Instruction::SWAP(ByteTarget),
+            Instruction::SRL(ByteTarget),
+            Instruction::BIT(u8, ByteTarget),
+            Instruction::RES(u8, ByteTarget),
+            Instruction::SET(u8, ByteTarget),
+            */
+
             Instruction::JP(condition) => self.jump(condition),
             Instruction::JR(condition) => self.jump_relative(condition),
 
@@ -1119,6 +1138,7 @@ impl CPU {
             Instruction::NOP => { self.read_next_byte(); 4 },
             Instruction::HALT => { self.is_halted = true; 4 },
             Instruction::STOP => self.stop(),
+
             _ => {panic!("Instruction not implemented")} // TODO add more instructions
         }
     }
@@ -1418,6 +1438,65 @@ impl CPU {
         self.registers.f.subtract = true;
         self.registers.f.carry = value > self.registers.a;
         self.registers.f.half_carry = (value & 0x0F) > (self.registers.a & 0x0F);
+
+        cycles
+    }
+
+    /**
+     * Rotate instruction
+     * Contains RL, RR, RLC, RLCA, RLA, RRC, RRCA and RRA
+     * Rotates register left. Carry parameter specifies whether to rotate through carry or not
+     */
+    fn rotate(&mut self, target: ByteTarget, carry: bool, left: bool) -> usize {
+        let mut cycles = 8;
+        let mut source_value = match target {
+            ByteTarget::A => { cycles = 4; self.registers.a },
+            ByteTarget::B => self.registers.b, // TODO definately make this into a method
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in RL instruction"),
+        };
+
+        let c: u8;
+        if left {
+            source_value = source_value.rotate_left(1);
+            c = source_value & 0x01;
+        } else {
+            source_value = source_value.rotate_right(1);
+            c = source_value & 0x80;
+        }
+
+        // Set wrapped bit to carry if instruction is 'through carry'
+        if carry {
+            // Toggle the bit only if it's different from the carry flag
+            if left && source_value & 0x01 != self.registers.f.carry as u8 {
+                source_value ^= 0x01;
+            }
+            if !left && source_value & 0x80 != (self.registers.f.carry as u8) << 7 {
+                source_value ^= 0x80;
+            }
+        }
+
+        match target {
+            ByteTarget::A => self.registers.a = source_value, // TODO definately make this into a method
+            ByteTarget::B => self.registers.b = source_value,
+            ByteTarget::C => self.registers.c = source_value,
+            ByteTarget::D => self.registers.d = source_value,
+            ByteTarget::E => self.registers.e = source_value,
+            ByteTarget::H => self.registers.h = source_value,
+            ByteTarget::L => self.registers.l = source_value,
+            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            _ => {},
+        }
+
+        self.registers.f.zero = source_value == 0;
+        self.registers.f.subtract = false;
+        self.registers.f.carry = c != 0;
+        self.registers.f.half_carry = false;
 
         cycles
     }
