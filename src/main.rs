@@ -1111,8 +1111,8 @@ impl CPU {
             Instruction::SRA(target) => self.shift(target, false, false),
             Instruction::SWAP(target) => self.swap(target),
             Instruction::SRL(target) => self.shift(target, false, true),
+            Instruction::BIT(n, target) => self.bit(n, target),
             /*
-            Instruction::BIT(u8, ByteTarget),
             Instruction::RES(u8, ByteTarget),
             Instruction::SET(u8, ByteTarget),
             */
@@ -1566,7 +1566,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
-            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in shift instruction"),
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in swap instruction"),
         };
 
         let lower = source_value & 0x0F;
@@ -1589,6 +1589,32 @@ impl CPU {
         self.registers.f.subtract = false;
         self.registers.f.half_carry = false;
         self.registers.f.carry = false;
+
+        cycles
+    }
+
+    /**
+     * BIT instruction
+     * Tests bit n in target and sets zero flag if the bit is not set
+     */
+    fn bit(&mut self, n: u8, target: ByteTarget) -> usize {
+        let mut cycles = 8;
+        let source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::HLI => { cycles = 12; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in bit instruction"),
+        };
+
+        let bit = source_value >> n & 0x01;
+        self.registers.f.zero = bit == 0;
+        self.registers.f.subtract = false;
+        self.registers.f.half_carry = true;
 
         cycles
     }
