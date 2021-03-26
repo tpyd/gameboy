@@ -1097,18 +1097,19 @@ impl CPU {
             Instruction::OR(target) => self.or(target),
             Instruction::CP(target) => self.cp(target),
 
-            Instruction::RLA => self.rotate(ByteTarget::A, true, true),
-            Instruction::RLCA => self.rotate(ByteTarget::A, false, true),
-            Instruction::RRA => self.rotate(ByteTarget::A, true, false),
-            Instruction::RRCA => self.rotate(ByteTarget::A, false, false),
+            // These instructions are not prefixed and only takes 4 cycles, easier to return cycles here and send all to rotate method
+            Instruction::RLA => { self.rotate(ByteTarget::A, true, true); 4 },
+            Instruction::RLCA => { self.rotate(ByteTarget::A, false, true); 4 },
+            Instruction::RRA => { self.rotate(ByteTarget::A, true, false); 4 },
+            Instruction::RRCA => { self.rotate(ByteTarget::A, false, false); 4 },
 
             Instruction::RLC(target) => self.rotate(target, false, true),
             Instruction::RL(target) => self.rotate(target, true, true),
             Instruction::RRC(target) => self.rotate(target, false, false),
             Instruction::RR(target) => self.rotate(target, true, false),
+            Instruction::SLA(target) => self.shift(target, true),
+            Instruction::SRA(target) => self.shift(target, false),
             /*
-            Instruction::SLA(ByteTarget),
-            Instruction::SRA(ByteTarget),
             Instruction::SWAP(ByteTarget),
             Instruction::SRL(ByteTarget),
             Instruction::BIT(u8, ByteTarget),
@@ -1458,7 +1459,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
-            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in RL instruction"),
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in rotate instruction"),
         };
 
         let c: u8;
@@ -1497,6 +1498,48 @@ impl CPU {
         self.registers.f.subtract = false;
         self.registers.f.carry = c != 0;
         self.registers.f.half_carry = false;
+
+        cycles
+    }
+
+    /**
+     * Shift instruction
+     * Contains SLA and SRA.
+     * Shift the target left or right
+     */
+    fn shift(&mut self, target: ByteTarget, left: bool) -> usize {
+        let mut cycles = 8;
+        let mut source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in shift instruction"),
+        };
+
+        let c = if left { source_value & 0x80 } else { source_value & 0x01 };
+        source_value = if left { source_value << 1 } else { source_value >> 1 };
+
+        match target {
+            ByteTarget::A => self.registers.a = source_value,
+            ByteTarget::B => self.registers.b = source_value,
+            ByteTarget::C => self.registers.c = source_value,
+            ByteTarget::D => self.registers.d = source_value,
+            ByteTarget::E => self.registers.e = source_value,
+            ByteTarget::H => self.registers.h = source_value,
+            ByteTarget::L => self.registers.l = source_value,
+            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            _ => {},
+        }
+
+        self.registers.f.zero = source_value == 0;
+        self.registers.f.subtract = false;
+        self.registers.f.half_carry = false;
+        self.registers.f.carry = c != 0;
 
         cycles
     }
