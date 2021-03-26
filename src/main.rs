@@ -1112,10 +1112,8 @@ impl CPU {
             Instruction::SWAP(target) => self.swap(target),
             Instruction::SRL(target) => self.shift(target, false, true),
             Instruction::BIT(n, target) => self.bit(n, target),
-            Instruction::RES(n, target) => self.res(n, target),
-            /*
-            Instruction::SET(u8, ByteTarget),
-            */
+            Instruction::RES(n, target) => self.setres(n, target, false),
+            Instruction::SET(n, target) => self.setres(n, target, true),
 
             Instruction::JP(condition) => self.jump(condition),
             Instruction::JR(condition) => self.jump_relative(condition),
@@ -1620,10 +1618,10 @@ impl CPU {
     }
 
     /**
-     * RES instruction
-     * Sets bit n in target to 0
+     * SET and RES instruction
+     * Sets or resets bit n in target
      */
-    fn res(&mut self, n: u8, target: ByteTarget) -> usize {
+    fn setres(&mut self, n: u8, target: ByteTarget, set: bool) -> usize {
         let mut cycles = 8;
         let mut source_value = match target {
             ByteTarget::A => self.registers.a,
@@ -1638,8 +1636,8 @@ impl CPU {
         };
 
         let bit = source_value >> n & 0x01;
-        if bit != 0 {
-            source_value |= 1 << n
+        if (set && bit == 0) || (!set && bit != 0) {
+            source_value ^= 1 << n
         }
 
         match target {
