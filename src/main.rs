@@ -1109,7 +1109,7 @@ impl CPU {
             Instruction::RR(target) => self.rotate(target, true, false),
             Instruction::SLA(target) => self.shift(target, true, false),
             Instruction::SRA(target) => self.shift(target, false, false),
-            Instruction::SWAP(ByteTarget),
+            Instruction::SWAP(target) => self.swap(target),
             Instruction::SRL(target) => self.shift(target, false, true),
             /*
             Instruction::BIT(u8, ByteTarget),
@@ -1547,6 +1547,48 @@ impl CPU {
         self.registers.f.subtract = false;
         self.registers.f.half_carry = false;
         self.registers.f.carry = c != 0;
+
+        cycles
+    }
+
+    /**
+     * SWAP instruction
+     * Swaps the lower 4 bits and upper 4 bits
+     */
+    fn swap(&mut self, target: ByteTarget) -> usize {
+        let mut cycles = 8;
+        let mut source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in shift instruction"),
+        };
+
+        let lower = source_value & 0x0F;
+        let upper = source_value & 0xF0;
+        let source_value = lower << 4 | upper >> 4;
+
+        match target {
+            ByteTarget::A => self.registers.a = source_value,
+            ByteTarget::B => self.registers.b = source_value,
+            ByteTarget::C => self.registers.c = source_value,
+            ByteTarget::D => self.registers.d = source_value,
+            ByteTarget::E => self.registers.e = source_value,
+            ByteTarget::H => self.registers.h = source_value,
+            ByteTarget::L => self.registers.l = source_value,
+            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            _ => {},
+        }
+
+        self.registers.f.zero = source_value == 0; // TODO create method for resetting all flags
+        self.registers.f.subtract = false;
+        self.registers.f.half_carry = false;
+        self.registers.f.carry = false;
 
         cycles
     }
