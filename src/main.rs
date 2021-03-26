@@ -1112,8 +1112,8 @@ impl CPU {
             Instruction::SWAP(target) => self.swap(target),
             Instruction::SRL(target) => self.shift(target, false, true),
             Instruction::BIT(n, target) => self.bit(n, target),
+            Instruction::RES(n, target) => self.res(n, target),
             /*
-            Instruction::RES(u8, ByteTarget),
             Instruction::SET(u8, ByteTarget),
             */
 
@@ -1566,7 +1566,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
-            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in swap instruction"),
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in SWAP instruction"),
         };
 
         let lower = source_value & 0x0F;
@@ -1608,13 +1608,51 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::HLI => { cycles = 12; self.bus.read_byte(self.registers.get_hl()) },
-            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in bit instruction"),
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in BIT instruction"),
         };
 
         let bit = source_value >> n & 0x01;
         self.registers.f.zero = bit == 0;
         self.registers.f.subtract = false;
         self.registers.f.half_carry = true;
+
+        cycles
+    }
+
+    /**
+     * RES instruction
+     * Sets bit n in target to 0
+     */
+    fn res(&mut self, n: u8, target: ByteTarget) -> usize {
+        let mut cycles = 8;
+        let mut source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in RES instruction"),
+        };
+
+        let bit = source_value >> n & 0x01;
+        if bit != 0 {
+            source_value |= 1 << n
+        }
+
+        match target {
+            ByteTarget::A => self.registers.a = source_value,
+            ByteTarget::B => self.registers.b = source_value,
+            ByteTarget::C => self.registers.c = source_value,
+            ByteTarget::D => self.registers.d = source_value,
+            ByteTarget::E => self.registers.e = source_value,
+            ByteTarget::H => self.registers.h = source_value,
+            ByteTarget::L => self.registers.l = source_value,
+            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            _ => {},
+        }
 
         cycles
     }
