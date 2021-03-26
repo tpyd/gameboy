@@ -1107,11 +1107,11 @@ impl CPU {
             Instruction::RL(target) => self.rotate(target, true, true),
             Instruction::RRC(target) => self.rotate(target, false, false),
             Instruction::RR(target) => self.rotate(target, true, false),
-            Instruction::SLA(target) => self.shift(target, true),
-            Instruction::SRA(target) => self.shift(target, false),
-            /*
+            Instruction::SLA(target) => self.shift(target, true, false),
+            Instruction::SRA(target) => self.shift(target, false, false),
             Instruction::SWAP(ByteTarget),
-            Instruction::SRL(ByteTarget),
+            Instruction::SRL(target) => self.shift(target, false, true),
+            /*
             Instruction::BIT(u8, ByteTarget),
             Instruction::RES(u8, ByteTarget),
             Instruction::SET(u8, ByteTarget),
@@ -1505,9 +1505,9 @@ impl CPU {
     /**
      * Shift instruction
      * Contains SLA and SRA.
-     * Shift the target left or right
+     * Shift the target left or right. Logic bool indicates whether to do a logical shift or an arithmetic shift.
      */
-    fn shift(&mut self, target: ByteTarget, left: bool) -> usize {
+    fn shift(&mut self, target: ByteTarget, left: bool, logic: bool) -> usize {
         let mut cycles = 8;
         let mut source_value = match target {
             ByteTarget::A => self.registers.a,
@@ -1521,8 +1521,15 @@ impl CPU {
             ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in shift instruction"),
         };
 
-        let c = if left { source_value & 0x80 } else { source_value & 0x01 };
+        let msb = source_value & 0x80;
+        let lsb = source_value & 0x01;
+        let c = if left { msb >> 7 } else { lsb };
         source_value = if left { source_value << 1 } else { source_value >> 1 };
+
+        // Right arithmetic shift inserts msb insted of 0
+        if !logic && !left {
+            source_value = source_value | msb;
+        }
 
         match target {
             ByteTarget::A => self.registers.a = source_value,
