@@ -1,6 +1,7 @@
 use minifb::{Key, Window, WindowOptions};
 use std::time::{Duration, Instant};
 use std::thread::sleep;
+use std::fs;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -324,14 +325,14 @@ enum ByteAddress { C, D8, D16 }
 enum StackTarget { AF, BC, DE, HL }
 
 enum RSTVec {
-    h00 = 0x00,
-    h10 = 0x10,
-    h20 = 0x20,
-    h30 = 0x30,
-    h08 = 0x08,
-    h18 = 0x18,
-    h28 = 0x28,
-    h38 = 0x38,
+    H00 = 0x00,
+    H10 = 0x10,
+    H20 = 0x20,
+    H30 = 0x30,
+    H08 = 0x08,
+    H18 = 0x18,
+    H28 = 0x28,
+    H38 = 0x38,
 }
 
 impl Instruction {
@@ -423,7 +424,7 @@ impl Instruction {
             0x71 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::C))),
             0x72 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::D))),
             0x73 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::E))),
-            0x78 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::H))),
+            0x74 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::H))),
             0x75 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::L))),
             0x77 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::HLI, LoadByteSource::A))),
             0x78 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::A, LoadByteSource::B))),
@@ -610,14 +611,14 @@ impl Instruction {
 
             0xD9 => Some(Instruction::RETI),
 
-            0xC7 => Some(Instruction::RST(RSTVec::h00)),
-            0xD7 => Some(Instruction::RST(RSTVec::h10)),
-            0xE7 => Some(Instruction::RST(RSTVec::h20)),
-            0xF7 => Some(Instruction::RST(RSTVec::h30)),
-            0xFF => Some(Instruction::RST(RSTVec::h08)),
-            0xDF => Some(Instruction::RST(RSTVec::h18)),
-            0xEF => Some(Instruction::RST(RSTVec::h28)),
-            0xFF => Some(Instruction::RST(RSTVec::h38)),
+            0xC7 => Some(Instruction::RST(RSTVec::H00)),
+            0xD7 => Some(Instruction::RST(RSTVec::H10)),
+            0xE7 => Some(Instruction::RST(RSTVec::H20)),
+            0xF7 => Some(Instruction::RST(RSTVec::H30)),
+            0xCF => Some(Instruction::RST(RSTVec::H08)),
+            0xDF => Some(Instruction::RST(RSTVec::H18)),
+            0xEF => Some(Instruction::RST(RSTVec::H28)),
+            0xFF => Some(Instruction::RST(RSTVec::H38)),
 
             // Stack instructions
             0xC1 => Some(Instruction::POP(StackTarget::BC)),
@@ -917,8 +918,6 @@ impl Instruction {
             0xFD => Some(Instruction::SET(7, ByteTarget::L)),
             0xFE => Some(Instruction::SET(7, ByteTarget::HLI)),
             0xFF => Some(Instruction::SET(7, ByteTarget::A)),
-
-            _ => None // TODO add all prefix instructions
         }
     }
 
@@ -945,6 +944,12 @@ impl MemoryBus {
             memory: [0; 0xFFFF],
             gpu: GPU::new(),
         };
+
+        // Load in Bootstrap into memory
+        let bootstrap = fs::read("resources/DMG_ROM.bin").unwrap();
+        for (i, byte) in bootstrap.iter().enumerate() {
+            mem.write_byte(i as u16, *byte);
+        }
 
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
         // Memory defaults to 0 so some entries are removed
@@ -1068,10 +1073,10 @@ impl CPU {
 
     // Returns a slice to the pixel buffer
     fn pixel_buffer(&self) -> &[u32] {
-        let LCDC = self.bus.read_byte(0xFF40);
+        let ldlc = self.bus.read_byte(0xFF40);
 
         // If Bit 7 is not set, LCD is disabled.
-        if LCDC & 0x80 == 0x00 {
+        if ldlc & 0x80 == 0x00 {
             return &[0x00FFFFFF as u32; WIDTH * HEIGHT] // Return all white
         }
 
@@ -1137,8 +1142,6 @@ impl CPU {
             Instruction::NOP => { self.read_next_byte(); 4 },
             Instruction::HALT => { self.is_halted = true; 4 },
             Instruction::STOP => self.stop(),
-
-            _ => {panic!("Instruction not implemented")} // TODO add more instructions
         }
     }
 
@@ -1555,7 +1558,7 @@ impl CPU {
      */
     fn swap(&mut self, target: ByteTarget) -> usize {
         let mut cycles = 8;
-        let mut source_value = match target {
+        let source_value = match target {
             ByteTarget::A => self.registers.a,
             ByteTarget::B => self.registers.b,
             ByteTarget::C => self.registers.c,
@@ -2117,7 +2120,7 @@ fn run(mut cpu: CPU, mut window: Window) {
             for (i, pixel) in cpu.pixel_buffer().iter().enumerate() {
                 window_buffer[i] = *pixel;
             }
-            window.update_with_buffer(&window_buffer, WIDTH, HEIGHT);
+            window.update_with_buffer(&window_buffer, WIDTH, HEIGHT).unwrap();
             cycles_elapsed_in_frame = 0;
         } else {
             sleep(Duration::from_nanos(2))
@@ -2139,7 +2142,7 @@ fn main() {
     // TODO gameboy framerate is 59.727500569606 Hz
     window.limit_update_rate(Some(std::time::Duration::from_micros(8300)));
 
-    let mut cpu = CPU::new();
+    let cpu = CPU::new();
 
     run(cpu, window);
 }
