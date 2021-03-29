@@ -148,11 +148,12 @@ const VRAM_SIZE: usize = VRAM_END - VRAM_BEGIN + 1;
     0 0 => Black
 */
 #[derive(Clone, Copy)]
+#[repr(u32)]
 enum TilePixelValue {
-    Zero,
-    One,
-    Two,
-    Three,
+    Zero = 0x00FFFFFF,
+    One = 0x00AAAAAA,
+    Two = 0x00555555,
+    Three = 0x00000000,
 }
 
 /*
@@ -225,6 +226,10 @@ impl GPU {
 
             self.tile_set[tile_address][row_address][pixel_address] = value;
         }
+    }
+
+    fn get_tile(&self, index: u8) -> Tile {
+        self.tile_set[index as usize]
     }
 }
 
@@ -1010,6 +1015,7 @@ struct CPU {
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool,
+    pixel_buffer: [u32; WIDTH * HEIGHT],
 }
 
 impl CPU {
@@ -1022,6 +1028,7 @@ impl CPU {
             ei_called: false,
             is_halted: false,
             ime: true,
+            pixel_buffer: [0x00FFFFFF; WIDTH * HEIGHT],
         }
     }
 
@@ -1072,15 +1079,37 @@ impl CPU {
     }
 
     // Returns a slice to the pixel buffer
-    fn pixel_buffer(&self) -> &[u32] {
+    fn pixel_buffer(&mut self) -> &[u32] {
         let ldlc = self.bus.read_byte(0xFF40);
+        self.pixel_buffer = [0x00FFFFFF; WIDTH * HEIGHT];
 
         // If Bit 7 is not set, LCD is disabled.
-        if ldlc & 0x80 == 0x00 {
-            return &[0x00FFFFFF as u32; WIDTH * HEIGHT] // Return all white
+        if ldlc & 0x80 == 0 {
+            return &self.pixel_buffer // Return all white
         }
 
-        &[0; WIDTH * HEIGHT]
+        let tile_set_start = if ldlc & 0x04 == 0 { 0x9800 } else { 0x9C00 };
+        let mut tile_set: [[Tile; 32]; 32] = [[empty_tile(); 32]; 32];
+
+        // Get all tiles in BG
+        for x in 0..32 {
+            for y in 0..32 {
+                let tile_index = self.bus.read_byte(tile_set_start + 32*y + x);
+                let tile = self.bus.gpu.get_tile(tile_index);
+                tile_set[x as usize][y as usize] = tile;
+
+                // Map tile into pixel buffer
+                for tile_x in 0..8 {
+                    for tile_y in 0..8 {
+                        let pixel = tile[tile_x as usize][tile_y as usize] as u32;
+                        self.pixel_buffer[((y+tile_y)*32 + tile_x) as usize] = pixel;
+                    }
+                }
+
+            }
+        }
+
+        &self.pixel_buffer
     }
 
     //Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
