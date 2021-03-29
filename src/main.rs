@@ -1015,7 +1015,6 @@ struct CPU {
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool,
-    pixel_buffer: [u32; WIDTH * HEIGHT],
 }
 
 impl CPU {
@@ -1028,7 +1027,6 @@ impl CPU {
             ei_called: false,
             is_halted: false,
             ime: true,
-            pixel_buffer: [0x00FFFFFF; WIDTH * HEIGHT],
         }
     }
 
@@ -1078,38 +1076,36 @@ impl CPU {
         cycles
     }
 
-    // Returns a slice to the pixel buffer
-    fn pixel_buffer(&mut self) -> &[u32] {
+    // Creates and returns a pixel buffer containing what should be drawn on screen
+    fn pixel_buffer(&mut self) -> [u32; WIDTH * HEIGHT] {
         let ldlc = self.bus.read_byte(0xFF40);
-        self.pixel_buffer = [0x00FFFFFF; WIDTH * HEIGHT];
+        let mut pixel_buffer = [0x00FFFFFF; WIDTH * HEIGHT];
 
         // If Bit 7 is not set, LCD is disabled.
         if ldlc & 0x80 == 0 {
-            return &self.pixel_buffer // Return all white
+            return pixel_buffer // Return all white
         }
 
         let tile_set_start = if ldlc & 0x04 == 0 { 0x9800 } else { 0x9C00 };
-        let mut tile_set: [[Tile; 32]; 32] = [[empty_tile(); 32]; 32];
 
         // Get all tiles in BG
         for x in 0..32 {
             for y in 0..32 {
                 let tile_index = self.bus.read_byte(tile_set_start + 32*y + x);
                 let tile = self.bus.gpu.get_tile(tile_index);
-                tile_set[x as usize][y as usize] = tile;
 
                 // Map tile into pixel buffer
                 for tile_x in 0..8 {
                     for tile_y in 0..8 {
                         let pixel = tile[tile_x as usize][tile_y as usize] as u32;
-                        self.pixel_buffer[((y+tile_y)*32 + tile_x) as usize] = pixel;
+                        pixel_buffer[((y+tile_y)*32 + tile_x) as usize] = pixel;
                     }
                 }
 
             }
         }
 
-        &self.pixel_buffer
+        pixel_buffer
     }
 
     //Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
