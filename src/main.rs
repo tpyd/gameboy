@@ -1079,33 +1079,44 @@ impl CPU {
     // Creates and returns a pixel buffer containing what should be drawn on screen
     fn pixel_buffer(&mut self) -> [u32; WIDTH * HEIGHT] {
         let ldlc = self.bus.read_byte(0xFF40);
-        let mut pixel_buffer = [0x00FFFFFF; WIDTH * HEIGHT];
+        let mut tile_map = [0x00FFFFFF; 256 * 256]; // tilemap is 32x32 tiles, each 8x8 pixels
 
         // If Bit 7 is not set, LCD is disabled.
         if ldlc & 0x80 == 0 {
-            return pixel_buffer // Return all white
+            return [0x00FFFFFF; WIDTH * HEIGHT] // Return all white
         }
 
         let tile_set_start = if ldlc & 0x04 == 0 { 0x9800 } else { 0x9C00 };
 
         // Get all tiles in BG
-        for x in 0..32 {
-            for y in 0..32 {
+        for y in 0..32 {
+            for x in 0..32 {
                 let tile_index = self.bus.read_byte(tile_set_start + 32*y + x);
                 let tile = self.bus.gpu.get_tile(tile_index);
 
                 // Map tile into pixel buffer
-                for tile_x in 0..8 {
-                    for tile_y in 0..8 {
-                        let pixel = tile[tile_x as usize][tile_y as usize] as u32;
-                        pixel_buffer[((y+tile_y)*32 + tile_x) as usize] = pixel;
+                for tile_y in 0..8 {
+                    for tile_x in 0..8 {
+                        tile_map[(256*(y*8 + tile_y) + tile_x) as usize] = tile[tile_x as usize][tile_y as usize] as u32;
                     }
                 }
 
             }
         }
 
-        pixel_buffer
+        // Find out where the screen is in the tilemap
+        let scroll_y = self.bus.read_byte(0xFF42);
+        let scroll_x = self.bus.read_byte(0xFF43);
+
+        let mut screen: [u32; WIDTH * HEIGHT] = [0x00FFFFFF; WIDTH * HEIGHT];
+        for (y, y_offset) in (scroll_y..(scroll_y + HEIGHT as u8)).enumerate() {
+            for (x, x_offset) in (scroll_x..(scroll_x + WIDTH as u8)).enumerate() {
+                let p = tile_map[(y_offset as u32*256 + x_offset as u32) as usize];
+                screen[(y*WIDTH + x) as usize] = p;
+            }
+        }
+
+        screen
     }
 
     //Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
