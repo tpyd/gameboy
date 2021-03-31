@@ -994,17 +994,12 @@ impl MemoryBus {
     }
 
     fn write_byte(&mut self, address: u16, value: u8) {
-        println!("Address: {}, Value: {}", address, value);
         let address = address as usize;
         match address {
             VRAM_BEGIN ..= VRAM_END => {
                 self.gpu.write_vram(address - VRAM_BEGIN, value)
             },
-            _ => {
-                println!("Old value: {}", self.memory[address]);
-                self.memory[address as usize] = value;
-                println!("New value: {}", self.memory[address]);
-            },
+            _ => self.memory[address as usize] = value,
         };
     }
 }
@@ -1735,11 +1730,12 @@ impl CPU {
 
     /*
         JR instruction
-        Reads the next byte as i8 and jumps to pc + i8 if jump condition is set
+        Reads the next byte as i8 and jumps to pc + i8 if jump condition is set.
+        NOTE: Pc needs to be added to the next instructions' pc, which is automatically done in this case.
     */
     fn jump_relative(&mut self, jump_condition: JumpCondition) -> usize {
         let mut cycles = 8;
-        let relative_val = self.read_next_byte() as i8 as u16;
+        let relative_val = self.read_next_byte() as i8 as u16; // TODO bug here. should be 0x00FB, but is 0xFFFB instead
 
         let jump = match jump_condition {
             JumpCondition::NotZero => !self.registers.f.zero,
