@@ -994,12 +994,17 @@ impl MemoryBus {
     }
 
     fn write_byte(&mut self, address: u16, value: u8) {
+        println!("Address: {}, Value: {}", address, value);
         let address = address as usize;
         match address {
             VRAM_BEGIN ..= VRAM_END => {
                 self.gpu.write_vram(address - VRAM_BEGIN, value)
             },
-            _ => self.memory[address as usize] = value,
+            _ => {
+                println!("Old value: {}", self.memory[address]);
+                self.memory[address as usize] = value;
+                println!("New value: {}", self.memory[address]);
+            },
         };
     }
 }
@@ -1790,8 +1795,8 @@ impl CPU {
                 };
                 match target {
                     LoadWordTarget::BC => self.registers.set_bc(source_value),
-                    LoadWordTarget::DE => self.registers.set_bc(source_value),
-                    LoadWordTarget::HL => self.registers.set_bc(source_value),
+                    LoadWordTarget::DE => self.registers.set_de(source_value),
+                    LoadWordTarget::HL => self.registers.set_hl(source_value),
                     LoadWordTarget::SP => self.sp = source_value,
                     LoadWordTarget::D16 => {
                         let word = self.read_next_word();
@@ -1800,23 +1805,7 @@ impl CPU {
                     }
                 }
             },
-            LoadType::AFromIndirect(target) => {
-                cycles = 8;
-                let source_value = self.registers.a;
-                match target {
-                    LoadMemoryLocation::BC => self.bus.write_byte(self.registers.get_bc(), source_value),
-                    LoadMemoryLocation::DE => self.bus.write_byte(self.registers.get_de(), source_value),
-                    LoadMemoryLocation::HLpostinc => {
-                        self.bus.write_byte(self.registers.get_hl(), source_value);
-                        self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
-                    },
-                    LoadMemoryLocation::HLpredec => {
-                        self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
-                        self.bus.write_byte(self.registers.get_hl(), source_value);
-                    },
-                }
-            },
-            LoadType::IndirectFromA(source) => {
+            LoadType::AFromIndirect(source) => {
                 cycles = 8;
                 let source_value = match source {
                     LoadMemoryLocation::BC => self.bus.read_byte(self.registers.get_bc()),
@@ -1832,6 +1821,22 @@ impl CPU {
                     }
                 };
                 self.registers.a = source_value;
+            },
+            LoadType::IndirectFromA(target) => {
+                cycles = 8;
+                let source_value = self.registers.a;
+                match target {
+                    LoadMemoryLocation::BC => self.bus.write_byte(self.registers.get_bc(), source_value),
+                    LoadMemoryLocation::DE => self.bus.write_byte(self.registers.get_de(), source_value),
+                    LoadMemoryLocation::HLpostinc => {
+                        self.bus.write_byte(self.registers.get_hl(), source_value);
+                        self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
+                    },
+                    LoadMemoryLocation::HLpredec => {
+                        self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
+                        self.bus.write_byte(self.registers.get_hl(), source_value);
+                    },
+                }
             },
             LoadType::AFromByteAddress(source) => {
                 cycles = 8;
