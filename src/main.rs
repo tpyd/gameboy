@@ -1735,7 +1735,7 @@ impl CPU {
     */
     fn jump_relative(&mut self, jump_condition: JumpCondition) -> usize {
         let mut cycles = 8;
-        let relative_val = self.read_next_byte() as i8 as u16; // TODO bug here. should be 0x00FB, but is 0xFFFB instead
+        let relative_val = self.read_next_byte() as i8 as u16; 
 
         let jump = match jump_condition {
             JumpCondition::NotZero => !self.registers.f.zero,
