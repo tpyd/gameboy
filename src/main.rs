@@ -1073,6 +1073,9 @@ impl CPU {
             panic!("Unknown instruction found for: {}", description);
         };
 
+        // Read serial port, used to debug with Blargg's test rom
+        //print!("{}", self.bus.read_byte(0xFF01).to_ascii_lowercase()); // Maybe change to little endianess
+
         cycles
     }
 
