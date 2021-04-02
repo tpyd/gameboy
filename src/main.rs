@@ -323,6 +323,7 @@ struct CPU {
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool,
+    last_instruction: Instruction,
 }
 
 impl CPU {
@@ -335,6 +336,7 @@ impl CPU {
             ei_called: false,
             is_halted: false,
             ime: true,
+            last_instruction: Instruction::STOP,
         }
     }
 
@@ -366,6 +368,7 @@ impl CPU {
         // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
         let cycles = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed) {
             let c = self.execute(instruction);
+            self.last_instruction = instruction;
 
             // Enable interrupts if previous instruction call was EI
             if self.ei_called {
@@ -378,7 +381,8 @@ impl CPU {
             c
         } else {
             let description = format!("0x{}{:x}", if prefixed { "cb" } else { "" }, instruction_byte);
-            panic!("Unknown instruction found for: {}", description);
+            panic!("Unknown instruction found for: {}\nLast instruction: {:?}", 
+                description, self.last_instruction);
         };
 
         // Read serial port, used to debug with Blargg's test rom
@@ -615,7 +619,7 @@ impl CPU {
                         self.bus.write_byte(self.registers.get_hl(), value);
                         value
                     },
-                    _ => panic!("Got invalid INC instruction")
+                    _ => panic!("Got invalid INC instruction.")
                 };
 
                 self.registers.f.zero = new_value == 0;

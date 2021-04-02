@@ -1,6 +1,7 @@
 /*
     All CPU instructions for LR35902
 */
+#[derive(Debug, Clone, Copy)]
 pub enum Instruction {
     // Arithmetic instructions
     ADD(ArithmeticType),  // Add target to register A
@@ -66,14 +67,15 @@ pub enum Instruction {
 
 // Targets for operations, both 8-bit and 16-bit
 // HLI means value at the address pointed to by HL registers, D8 means next byte
-pub enum ArithmeticType { Byte(ByteTarget), Word(WordTarget), SP }
+#[derive(Debug, Clone, Copy)] pub enum ArithmeticType { Byte(ByteTarget), Word(WordTarget), SP }
 
-pub enum ByteTarget { A, B, C, D, E, H, L, D8, HLI }
-pub enum WordTarget { BC, DE, HL, SP }
+#[derive(Debug, Clone, Copy)] pub enum ByteTarget { A, B, C, D, E, H, L, D8, HLI }
+#[derive(Debug, Clone, Copy)] pub enum WordTarget { BC, DE, HL, SP }
 
-pub enum JumpType { Word(JumpCondition), Address }
-pub enum JumpCondition { NotZero, Zero, NotCarry, Carry, Always }
+#[derive(Debug, Clone, Copy)] pub enum JumpType { Word(JumpCondition), Address }
+#[derive(Debug, Clone, Copy)] pub enum JumpCondition { NotZero, Zero, NotCarry, Carry, Always }
 
+#[derive(Debug, Clone, Copy)]
 pub enum LoadType {
     Byte(LoadByteTarget, LoadByteSource),
     Word(LoadWordTarget, LoadWordSource),
@@ -85,15 +87,16 @@ pub enum LoadType {
     HLFromSP, // Load SP+i8 into HL
 }
 
-pub enum LoadByteTarget { A, B, C, D, E, H, L, HLI }
-pub enum LoadByteSource { A, B, C, D, E, H, L, D8, HLI }
-pub enum LoadWordTarget { BC, DE, HL, SP, D16 }
-pub enum LoadWordSource { SP, D16 }
-pub enum LoadMemoryLocation { BC, DE, HLpostinc, HLpredec }
-pub enum ByteAddress { C, D8, D16 }
+#[derive(Debug, Clone, Copy)] pub enum LoadByteTarget { A, B, C, D, E, H, L, HLI }
+#[derive(Debug, Clone, Copy)] pub enum LoadByteSource { A, B, C, D, E, H, L, D8, HLI }
+#[derive(Debug, Clone, Copy)] pub enum LoadWordTarget { BC, DE, HL, SP, D16 }
+#[derive(Debug, Clone, Copy)] pub enum LoadWordSource { SP, D16 }
+#[derive(Debug, Clone, Copy)] pub enum LoadMemoryLocation { BC, DE, HLpostinc, HLpredec }
+#[derive(Debug, Clone, Copy)] pub enum ByteAddress { C, D8, D16 }
 
-pub enum StackTarget { AF, BC, DE, HL }
+#[derive(Debug, Clone, Copy)] pub enum StackTarget { AF, BC, DE, HL }
 
+#[derive(Debug, Clone, Copy)]
 pub enum RSTVec {
     H00 = 0x00,
     H10 = 0x10,
