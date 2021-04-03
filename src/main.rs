@@ -381,7 +381,7 @@ impl CPU {
             c
         } else {
             let description = format!("0x{}{:x}", if prefixed { "cb" } else { "" }, instruction_byte);
-            panic!("Unknown instruction found for: {}\nLast instruction: {:?}", 
+            panic!("Unknown instruction found for: {}\nLast instruction: {:?}",
                 description, self.last_instruction);
         };
 
@@ -1050,7 +1050,7 @@ impl CPU {
     */
     fn jump_relative(&mut self, jump_condition: JumpCondition) -> usize {
         let mut cycles = 8;
-        let relative_val = self.read_next_byte() as i8 as u16; 
+        let relative_val = self.read_next_byte() as i8 as u16;
 
         let jump = match jump_condition {
             JumpCondition::NotZero => !self.registers.f.zero,
@@ -1434,18 +1434,19 @@ impl CPU {
         4
     }
 
-    // Increments the pc and reads the next byte
+    // Reads the next byte and increments the pc
     fn read_next_byte(&mut self) -> u8 {
         let next_byte = self.bus.read_byte(self.pc);
         self.pc = self.pc.wrapping_add(1);
         next_byte
     }
 
-    // Increments the pc and reads the next word
+    // Reads the next word  and increments the pc
     fn read_next_word(&mut self) -> u16 {
-        let word = (self.bus.read_byte(self.pc) as u16) << 8 | self.bus.read_byte(self.pc.wrapping_add(1)) as u16;
+        let right = self.bus.read_byte(self.pc) as u16;
+        let left = (self.bus.read_byte(self.pc.wrapping_add(1)) as u16) << 8;
         self.pc = self.pc.wrapping_add(2);
-        word
+        left | right
     }
 }
 
