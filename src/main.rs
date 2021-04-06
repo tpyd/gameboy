@@ -8,6 +8,8 @@ use instruction::*;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
+const TILESET_WIDTH: usize = 24*8; // 8x8 pixels
+const TILESET_HEIGHT: usize = 16*8;
 
 const ZERO_FLAG_BYTE_POSITION: u8 = 7;
 const SUBTRACT_FLAG_BYTE_POSITION: u8 = 6;
@@ -403,19 +405,19 @@ impl CPU {
 
         let tile_set_start = if ldlc & 0x04 == 0 { 0x9800 } else { 0x9C00 };
 
-        // Get all tiles in BG
+        // Loop through all tiles in BG
         for y in 0..32 {
             for x in 0..32 {
+                // Get tile at this position
                 let tile_index = self.bus.read_byte(tile_set_start + 32*y + x);
                 let tile = self.bus.gpu.get_tile(tile_index);
 
                 // Map tile into pixel buffer
                 for tile_y in 0..8 {
                     for tile_x in 0..8 {
-                        tile_map[(256*(y*8 + tile_y) + tile_x) as usize] = tile[tile_x as usize][tile_y as usize] as u32;
+                        tile_map[(256*(y*8 + tile_y) + x*8 + tile_x) as usize] = tile[tile_x as usize][tile_y as usize] as u32;
                     }
                 }
-
             }
         }
 
@@ -423,6 +425,8 @@ impl CPU {
         let scroll_y = self.bus.read_byte(0xFF42);
         let scroll_x = self.bus.read_byte(0xFF43);
 
+        // Crop buffer to screen
+        // TODO add so screen view wraps to other side
         let mut screen: [u32; WIDTH * HEIGHT] = [0x00FFFFFF; WIDTH * HEIGHT];
         for (y, y_offset) in (scroll_y..(scroll_y + HEIGHT as u8)).enumerate() {
             for (x, x_offset) in (scroll_x..(scroll_x + WIDTH as u8)).enumerate() {
@@ -432,6 +436,28 @@ impl CPU {
         }
 
         screen
+    }
+
+    // Creates and returns a buffer with all tiles in the tileset in all three blocks
+    fn tileset_buffer(&mut self) -> [u32; TILESET_WIDTH * TILESET_HEIGHT] {
+        let mut tile_set = [0x00FFFFFF; 384 * 8*8]; // tileset is 384 tiles, each 8x8 pixels
+
+        // Loop through tiles in tileset window
+        for x in 0..24 {
+            for y in 0..16 {
+                // Get the tile at this position
+                let tile = self.bus.gpu.tile_set[x*(y+1)];
+
+                // Map tile to tile_set buffer
+                for tile_y in 0..8 {
+                    for tile_x in 0..8 {
+                        tile_set[y*24*64 + tile_y*24*8 + x*8 + tile_x] = tile[tile_x][tile_y] as u32;
+                    }
+                }
+            }
+        }
+
+        tile_set
     }
 
     //Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
@@ -1454,12 +1480,14 @@ const CLOCK: usize = 4194304; // in Hz
 const FPS: usize = 30;
 const ONE_FRAME_IN_CYCLES: usize = CLOCK / ( 4 * FPS );
 
-fn run(mut cpu: CPU, mut window: Window) {
+fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
     let mut window_buffer = [0; WIDTH * HEIGHT];
+    let mut tileset_window_buffer = [0; TILESET_WIDTH * TILESET_HEIGHT];
     let mut cycles_elapsed_in_frame = 0usize;
     let mut now = Instant::now();
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
+    while window.is_open() && tileset_window.is_open() && 
+            !window.is_key_down(Key::Escape) && !tileset_window.is_key_down(Key::Escape) {
         // Check how much time (in nanoseconds) has passed
         let time_delta = now.elapsed().subsec_nanos();
         now = Instant::now();
@@ -1473,7 +1501,11 @@ fn run(mut cpu: CPU, mut window: Window) {
             for (i, pixel) in cpu.pixel_buffer().iter().enumerate() {
                 window_buffer[i] = *pixel;
             }
+            for (i, pixel) in cpu.tileset_buffer().iter().enumerate() {
+                tileset_window_buffer[i] = *pixel;
+            }
             window.update_with_buffer(&window_buffer, WIDTH, HEIGHT).unwrap();
+            tileset_window.update_with_buffer(&tileset_window_buffer, TILESET_WIDTH, TILESET_HEIGHT).unwrap();
             cycles_elapsed_in_frame = 0;
         } else {
             sleep(Duration::from_nanos(2))
@@ -1492,10 +1524,22 @@ fn main() {
         panic!("{}", e);
     });
 
-    // TODO gameboy framerate is 59.727500569606 Hz
-    window.limit_update_rate(Some(std::time::Duration::from_micros(8300)));
+    let mut tileset_window = Window::new(
+        "Tileset",
+        TILESET_WIDTH,
+        TILESET_HEIGHT,
+        WindowOptions::default()
+    )
+    .unwrap_or_else(|e| {
+        panic!("{}", e);
+    });
+
+
+    // gameboy framerate is 59.727500569606 Hz
+    window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
+    tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
     let cpu = CPU::new();
 
-    run(cpu, window);
+    run(cpu, window, tileset_window);
 }
