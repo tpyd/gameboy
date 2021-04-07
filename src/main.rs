@@ -233,8 +233,14 @@ impl GPU {
         }
     }
 
-    fn get_tile(&self, index: u8) -> Tile {
-        self.tile_set[index as usize]
+    // Returns the tile at the given index depending on whether the address mode is $8000 or not (set by LDLC bit 4)
+    fn get_tile(&self, index: u8, address_mode: u16) -> Tile {
+        if address_mode == 0x8000 {
+            self.tile_set[index as usize]
+        } else {
+            // $8800 mode uses 0x9000 as base address and signed indexing
+            self.tile_set[index as usize + 400]
+        }
     }
 }
 
@@ -405,14 +411,15 @@ impl CPU {
             return tile_map
         }
 
-        let tile_set_start = if ldlc & 0x04 == 0 { 0x9800 } else { 0x9C00 };
+        let tile_set_start = if ldlc & 0x03 == 0 { 0x9800 } else { 0x9C00 };
+        let address_mode = if ldlc & 0x04 == 0 { 0x8000 } else { 0x8800 };
 
         // Loop through all tiles in BG
         for y in 0..32 {
             for x in 0..32 {
                 // Get tile at this position
                 let tile_index = self.bus.read_byte(tile_set_start + 32*y + x);
-                let tile = self.bus.gpu.get_tile(tile_index);
+                let tile = self.bus.gpu.get_tile(tile_index, address_mode);
 
                 // Map tile into pixel buffer
                 for tile_y in 0..8 {
@@ -464,7 +471,7 @@ impl CPU {
         tile_set
     }
 
-    //Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
+    // Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
     fn execute(&mut self, instruction: Instruction) -> usize {
         if self.is_halted {
             return 4
