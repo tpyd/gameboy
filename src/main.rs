@@ -394,13 +394,15 @@ impl CPU {
     }
 
     // Creates and returns a pixel buffer containing what should be drawn on screen
-    fn pixel_buffer(&mut self) -> [u32; WIDTH * HEIGHT] {
+    fn pixel_buffer(&mut self) -> Vec<u32> {
         let ldlc = self.bus.read_byte(0xFF40);
-        let mut tile_map = [0x00FFFFFF; 256 * 256]; // tilemap is 32x32 tiles, each 8x8 pixels
+        let mut tile_map: Vec<u32> = Vec::new();
+        tile_map.resize(256*256, 0); // tilemap is 32x32 tiles, each 8x8 pixels
 
-        // If Bit 7 is not set, LCD is disabled.
+        // If Bit 7 is not set, LCD is disabled. Return all white
         if ldlc & 0x80 == 0 {
-            return [0x00FFFFFF; WIDTH * HEIGHT] // Return all white
+            tile_map.resize(256*256, 0x00FFFFFF);
+            return tile_map
         }
 
         let tile_set_start = if ldlc & 0x04 == 0 { 0x9800 } else { 0x9C00 };
@@ -427,7 +429,8 @@ impl CPU {
 
         // Crop buffer to screen
         // TODO add so screen view wraps to other side
-        let mut screen: [u32; WIDTH * HEIGHT] = [0x00FFFFFF; WIDTH * HEIGHT];
+        let mut screen: Vec<u32> = Vec::new();
+        screen.resize(WIDTH*HEIGHT, 0x00FFFFFF);
         for (y, y_offset) in (scroll_y..(scroll_y + HEIGHT as u8)).enumerate() {
             for (x, x_offset) in (scroll_x..(scroll_x + WIDTH as u8)).enumerate() {
                 let p = tile_map[(y_offset as u32*256 + x_offset as u32) as usize];
@@ -439,8 +442,9 @@ impl CPU {
     }
 
     // Creates and returns a buffer with all tiles in the tileset in all three blocks
-    fn tileset_buffer(&mut self) -> [u32; TILESET_WIDTH * TILESET_HEIGHT] {
-        let mut tile_set = [0x00FFFFFF; 384 * 8*8]; // tileset is 384 tiles, each 8x8 pixels
+    fn tileset_buffer(&mut self) -> Vec<u32> {
+        let mut tile_set: Vec<u32> = Vec::new();
+        tile_set.resize(384*8*8, 0x00FFFFFF); // tileset is 384 tiles, each 8x8 pixels
 
         // Loop through tiles in tileset window
         for x in 0..24 {
@@ -1486,7 +1490,7 @@ fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
     let mut cycles_elapsed_in_frame = 0usize;
     let mut now = Instant::now();
 
-    while window.is_open() && tileset_window.is_open() && 
+    while window.is_open() && tileset_window.is_open() &&
             !window.is_key_down(Key::Escape) && !tileset_window.is_key_down(Key::Escape) {
         // Check how much time (in nanoseconds) has passed
         let time_delta = now.elapsed().subsec_nanos();
