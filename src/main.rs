@@ -239,7 +239,7 @@ impl GPU {
             self.tile_set[index as usize]
         } else {
             // $8800 mode uses 0x9000 as base address and signed indexing
-            self.tile_set[index as usize + 400]
+            self.tile_set[255u16.wrapping_add((index as i8 + 1) as u16) as usize]
         }
     }
 }
