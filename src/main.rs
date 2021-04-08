@@ -272,6 +272,12 @@ impl MemoryBus {
             mem.write_byte(i as u16, *byte);
         }
 
+        // Load ROM into memory (test rom for now)
+        let rom = fs::read("test/cpu_instrs/individual/06-ld r,r.gb").unwrap();
+        for (i, byte) in rom.iter().enumerate() {
+            mem.write_byte(i as u16, *byte);
+        }
+
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
         // Memory defaults to 0 so some entries are removed
         // TODO read these from file along with the bootrom
