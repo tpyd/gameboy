@@ -273,9 +273,9 @@ impl MemoryBus {
         }
 
         // Load ROM into memory (test rom for now)
-        let rom = fs::read("test/cpu_instrs/individual/06-ld r,r.gb").unwrap();
+        let rom = fs::read("test/cpu_instrs/individual/10-bit ops.gb").unwrap();
         for (i, byte) in rom.iter().enumerate() {
-            mem.write_byte(i as u16, *byte);
+            mem.write_byte(256 + i as u16, *byte);
         }
 
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
@@ -344,7 +344,7 @@ impl CPU {
     fn new() -> Self {
         CPU {
             registers: Registers::new(),
-            pc: 0x0000,
+            pc: 0x0100,
             sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
             bus: MemoryBus::new(),
             ei_called: false,
@@ -400,7 +400,12 @@ impl CPU {
         };
 
         // Read serial port, used to debug with Blargg's test rom
-        //print!("{}", self.bus.read_byte(0xFF01).to_ascii_lowercase()); // Maybe change to little endianess
+        let serial_transfer_data = self.bus.read_byte(0xFF01);      // SB
+        let serial_transfer_control = self.bus.read_byte(0xFF02);   // SC
+        if serial_transfer_control == 0x81 {
+            print!("{}", serial_transfer_data.to_ascii_lowercase()); // Maybe change to little endianess
+            self.bus.write_byte(0xFF02, 0x01);
+        }
 
         cycles
     }
