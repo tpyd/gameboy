@@ -137,6 +137,7 @@ impl MemoryBus {
         let rom = fs::read("test/cpu_instrs/cpu_instrs.gb").unwrap();
         let rom_header = &rom[..0x014F]; // Header info starts at 0x0100, but easier this way
 
+        // Create memory banks depending on the cartridge configuration
         let mut memory_banks = Vec::new();
         let mbc_type = MemoryBus::get_cartridge_type(rom_header);
         match mbc_type {
@@ -150,9 +151,18 @@ impl MemoryBus {
             _ => {},
         }
 
+        // Load cartridge data into memory
+        let memory_base: [u8; 0x3FFF] = rom[..0x4000];
+        let num_banks = u32::pow(2, rom_header[0x0148] as u32);
+
+        for i in 0..num_banks {
+            memory_banks[i] = rom[0x4000*(i+1) as usize..0x7fff*(i+1) as usize]
+        }
+
+
         let mut mem = MemoryBus {
             base: [0; 0xFFFF],
-            banks: Vec::new(),
+            banks: memory_banks,
             gpu: GPU::new(),
         };
 
