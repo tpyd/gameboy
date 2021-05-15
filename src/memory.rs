@@ -127,46 +127,57 @@ impl GPU {
         0x8800 - 0x97FF tile set 2
 */
 pub struct MemoryBus {
-    base: [u8; 0xFFFF],
-    banks: Vec<[u8; 0x3FFF]>,
+    base: [u8; 0x10000],
+    mbc_type: MBCType,
+    banks: Vec<[u8; 0x4000]>,
     gpu: GPU,
 }
 
 impl MemoryBus {
     pub fn new() -> Self {
-        let rom = fs::read("test/cpu_instrs/cpu_instrs.gb").unwrap();
+        let rom = fs::read("test/cpu_instrs/individual/06-ld r,r.gb").unwrap();
+        let rom_slice = rom.as_slice();
         let rom_header = &rom[..0x014F]; // Header info starts at 0x0100, but easier this way
 
-        // Create memory banks depending on the cartridge configuration
+        // Load data into memory depending on cartridge configuration
+        let mut memory_base = [0u8; 0xFFFF];
         let mut memory_banks = Vec::new();
         let mbc_type = MemoryBus::get_cartridge_type(rom_header);
         match mbc_type {
-            // MBC1 uses 125 banks
-            MBCType::MBC1 => {
-                for _ in 0..125 {
-                    let bank = [0u8; 0x3FFF];
-                    memory_banks.push(bank);
+            // No MBC, loaded directly into memory
+            MBCType::None => {
+                for (i, b) in rom_slice.iter().enumerate() {
+                    memory_base[i] = *b;
                 }
             },
-            _ => {},
+            // MBC1 uses 125 banks
+            MBCType::MBC1 => {
+                let rom_iter = rom_slice.chunks_exact(0x4000);
+                for slice in rom_iter {
+                    let mut bank = [0u8; 0x4000];
+                    bank.copy_from_slice(slice);
+                    memory_banks.push(bank);
+                }
+                // TODO check if rom_iter.remainder() contains anything
+                while memory_banks.len() < 125 {
+                    memory_banks.push([0; 0x4000]);
+                }
+
+                // Put first two banks directly in memory
+                for (i, b) in memory_banks[0].iter().chain(memory_banks[1].iter()).enumerate() {
+                    memory_base[i] = *b;
+                }
+            },
         }
-
-        // Load cartridge data into memory
-        let memory_base: [u8; 0x3FFF] = rom[..0x4000];
-        let num_banks = u32::pow(2, rom_header[0x0148] as u32);
-
-        for i in 0..num_banks {
-            memory_banks[i] = rom[0x4000*(i+1) as usize..0x7fff*(i+1) as usize]
-        }
-
 
         let mut mem = MemoryBus {
-            base: [0; 0xFFFF],
+            base: [0; 0x10000],
+            mbc_type: mbc_type,
             banks: memory_banks,
             gpu: GPU::new(),
         };
 
-        read_cartridge_header(&mem.base);
+        read_cartridge_header(&rom_header);
 
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
         // Memory defaults to 0 so some entries are removed
@@ -196,23 +207,45 @@ impl MemoryBus {
 
     pub fn read_byte(&self, address: u16) -> u8 {
         let address = address as usize;
-        match address {
-            // Redirect vram address to GPU
-            VRAM_BEGIN ..= VRAM_END => {
-                self.gpu.read_vram(address - VRAM_BEGIN)
-            },
-            _ => self.base[address]
+
+        // Redirect VRAM address to GPU struct
+        if (VRAM_BEGIN..=VRAM_END).contains(&address) {
+            return self.gpu.read_vram(address - VRAM_BEGIN)
         }
+
+        self.base[address]
     }
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
         let address = address as usize;
+
+        // Redirect VRAM address to GPU struct
+        if (VRAM_BEGIN..=VRAM_END).contains(&address) {
+            return self.gpu.write_vram(address - VRAM_BEGIN, value)
+        }
+
         match address {
-            VRAM_BEGIN ..= VRAM_END => {
-                self.gpu.write_vram(address - VRAM_BEGIN, value)
+            0x0000..=0x1FFF => {},
+            0x2000..=0x3FFF => {
+                match self.mbc_type {
+                    MBCType::MBC1 => {
+                        let mut bank_number = value & 0x1F;
+                        if vec!(0x00, 0x20, 0x40, 0x60).contains(&bank_number) {
+                            bank_number += 1;
+                        }
+
+                        // Replace memory with bank data
+                        for (i, b) in self.banks[bank_number as usize].iter().enumerate() {
+                            self.base[i] = *b;
+                        }
+                    },
+                    _ => {},
+                }
             },
-            _ => self.base[address as usize] = value,
-        };
+            0x4000..=0x5FFF => {},
+            0x6000..=0x7FFF => {},
+            _ => self.base[address] = value,
+        }
     }
 
     // Returns the type of the cartridge. What type of MBC it uses.

@@ -282,7 +282,6 @@ impl CPU {
         for x in 0..24 {
             for y in 0..16 {
                 // Get the tile at this position
-
                 let tile = self.bus.get_gpu_tile(x*(y+1), 0x8000);
 
                 // Map tile to tile_set buffer
@@ -936,6 +935,7 @@ impl CPU {
         Loads either from memory into registers or vice versa
     */
     fn load(&mut self, load_type: LoadType) -> usize {
+        //println!("DEBUG: LD {:?}", load_type);
         let mut cycles = 4;
         match load_type {
             LoadType::Byte(target, source) => {
