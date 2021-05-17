@@ -135,12 +135,12 @@ pub struct MemoryBus {
 
 impl MemoryBus {
     pub fn new() -> Self {
-        let rom = fs::read("test/cpu_instrs/individual/01-special.gb").unwrap();
+        let rom = fs::read("test/cpu_instrs/individual/06-ld r,r.gb").unwrap();
         let rom_slice = rom.as_slice();
         let rom_header = &rom[..0x014F]; // Header info starts at 0x0100, but easier this way
 
         // Load data into memory depending on cartridge configuration
-        let mut memory_base = [0u8; 0xFFFF];
+        let mut memory_base = [0u8; 0x10000];
         let mut memory_banks = Vec::new();
         let mbc_type = MemoryBus::get_cartridge_type(rom_header);
         match mbc_type {
@@ -171,7 +171,7 @@ impl MemoryBus {
         }
 
         let mut mem = MemoryBus {
-            base: [0; 0x10000],
+            base: memory_base,
             mbc_type: mbc_type,
             banks: memory_banks,
             gpu: GPU::new(),

@@ -1,5 +1,5 @@
 use minifb::{Key, Window, WindowOptions};
-use std::time::{Duration, Instant};
+use std::{io::Write, time::{Duration, Instant}};
 use std::thread::sleep;
 
 mod instruction;
@@ -216,7 +216,8 @@ impl CPU {
         let serial_transfer_data = self.bus.read_byte(0xFF01);      // SB
         let serial_transfer_control = self.bus.read_byte(0xFF02);   // SC
         if serial_transfer_control == 0x81 {
-            print!("{}", serial_transfer_data.to_ascii_lowercase()); // Maybe change to little endianess
+            print!("{}", serial_transfer_data as char); // Maybe change to little endianess
+            std::io::stdout().flush().unwrap();
             self.bus.write_byte(0xFF02, 0x01);
         }
 
@@ -258,8 +259,8 @@ impl CPU {
         }
 
         // Find out where the screen is in the tilemap
-        let scroll_y = self.bus.read_byte(0xFF42);
-        let scroll_x = self.bus.read_byte(0xFF43);
+        let scroll_y = 0;//self.bus.read_byte(0xFF42);
+        let scroll_x = 0;//self.bus.read_byte(0xFF43);
 
         // Crop buffer to screen
         // TODO add so screen view wraps to other side
