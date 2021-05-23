@@ -371,25 +371,32 @@ impl CPU {
         let mut cycles = 4; // Default number of cycles for ADD instruction
         match target {
             ArithmeticType::Byte(byte_target) => {
-                let mut value: u8;
-                match byte_target {
-                    ByteTarget::A => { value = self.registers.a; },
-                    ByteTarget::B => { value = self.registers.b; },
-                    ByteTarget::C => { value = self.registers.c; },
-                    ByteTarget::D => { value = self.registers.d; },
-                    ByteTarget::E => { value = self.registers.e; },
-                    ByteTarget::H => { value = self.registers.h; },
-                    ByteTarget::L => { value = self.registers.l; },
-                    ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
-                    ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+                let source_value = match byte_target {
+                    ByteTarget::A => self.registers.a,
+                    ByteTarget::B => self.registers.b,
+                    ByteTarget::C => self.registers.c,
+                    ByteTarget::D => self.registers.d,
+                    ByteTarget::E => self.registers.e,
+                    ByteTarget::H => self.registers.h,
+                    ByteTarget::L => self.registers.l,
+                    ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
+                    ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+                };
+                let (mut new_value, mut did_overflow) = self.registers.a.overflowing_add(source_value);
+                let mut half_carry = (((self.registers.a & 0xf) + (source_value & 0xf)) & 0x10) == 0x10;
+                
+                // Handle ADC 
+                if carry { 
+                    let (adc_value, adc_overflow) = new_value.overflowing_add(self.registers.f.carry as u8);
+                    new_value = adc_value;
+                    did_overflow |= adc_overflow;
+                    half_carry |= (((new_value & 0xf) + (adc_value & 0xf)) & 0x10) == 0x10;
                 }
-                if carry { value += self.registers.f.carry as u8; }
-                let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
 
                 // Half carry is set if bit 3 overflows
                 self.registers.f.zero = new_value == 0;
                 self.registers.f.carry = did_overflow;
-                self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
+                self.registers.f.half_carry = half_carry;
 
                 self.registers.a = new_value;
 
@@ -582,19 +589,18 @@ impl CPU {
     */
     fn xor(&mut self, target: ByteTarget) -> usize {
         let mut cycles = 4;
-        let value: u8;
-        match target {
-            ByteTarget::A => { value = self.registers.a; },
-            ByteTarget::B => { value = self.registers.b; },
-            ByteTarget::C => { value = self.registers.c; },
-            ByteTarget::D => { value = self.registers.d; },
-            ByteTarget::E => { value = self.registers.e; },
-            ByteTarget::H => { value = self.registers.h; },
-            ByteTarget::L => { value = self.registers.l; },
-            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
-            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        let source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
+            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
         };
-        self.registers.a = self.registers.a ^ value;
+        self.registers.a ^= source_value;
 
         self.registers.f.zero = self.registers.a == 0;
         self.registers.f.subtract = false;
@@ -610,19 +616,18 @@ impl CPU {
     */
     fn or(&mut self, target: ByteTarget) -> usize {
         let mut cycles = 4;
-        let value: u8;
-        match target {
-            ByteTarget::A => { value = self.registers.a; },
-            ByteTarget::B => { value = self.registers.b; },
-            ByteTarget::C => { value = self.registers.c; },
-            ByteTarget::D => { value = self.registers.d; },
-            ByteTarget::E => { value = self.registers.e; },
-            ByteTarget::H => { value = self.registers.h; },
-            ByteTarget::L => { value = self.registers.l; },
-            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
-            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        let source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
+            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
         };
-        self.registers.a = self.registers.a | value;
+        self.registers.a |= source_value;
 
         self.registers.f.zero = self.registers.a == 0;
         self.registers.f.subtract = false;
@@ -638,25 +643,24 @@ impl CPU {
     */
     fn cp(&mut self, target: ByteTarget) -> usize {
         let mut cycles = 4;
-        let value: u8;
-        match target {
-            ByteTarget::A => { value = self.registers.a; },
-            ByteTarget::B => { value = self.registers.b; },
-            ByteTarget::C => { value = self.registers.c; },
-            ByteTarget::D => { value = self.registers.d; },
-            ByteTarget::E => { value = self.registers.e; },
-            ByteTarget::H => { value = self.registers.h; },
-            ByteTarget::L => { value = self.registers.l; },
-            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
-            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
-        }
-        let new_value = self.registers.a.wrapping_sub(value);
+        let source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
+            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+        };
+        let (new_value, carry) = self.registers.a.overflowing_sub(source_value);
 
         // Carry bit is set if subtraction has to borrow
         self.registers.f.zero = new_value == 0;
         self.registers.f.subtract = true;
-        self.registers.f.carry = value > self.registers.a;
-        self.registers.f.half_carry = (value & 0x0F) > (self.registers.a & 0x0F);
+        self.registers.f.carry = carry;
+        self.registers.f.half_carry = (source_value & 0xf) > (self.registers.a & 0xf);
 
         cycles
     }
