@@ -1130,6 +1130,8 @@ impl CPU {
     */
     fn call(&mut self, test: JumpCondition) -> usize {
         let mut cycles = 12;
+        let new_pc = self.read_next_word();
+
         let jump_condition = match test {
             JumpCondition::NotZero => !self.registers.f.zero,
             JumpCondition::NotCarry => !self.registers.f.carry,
@@ -1140,7 +1142,6 @@ impl CPU {
 
         if jump_condition {
             cycles = 24;
-            let new_pc = self.read_next_word();
             self.push_value(self.pc);
             self.pc = new_pc;
         }
