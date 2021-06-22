@@ -1,5 +1,5 @@
 use minifb::{Key, Window, WindowOptions};
-use std::{io::Write, time::{Duration, Instant}};
+use std::{collections::VecDeque, io::Write, time::{Duration, Instant}};
 use std::thread::sleep;
 
 mod instruction;
@@ -150,7 +150,7 @@ struct CPU {
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool,
-    last_instruction: Instruction,
+    instruction_history: VecDeque<String>,
 }
 
 impl CPU {
@@ -163,7 +163,7 @@ impl CPU {
             ei_called: false,
             is_halted: false,
             ime: true,
-            last_instruction: Instruction::STOP,
+            instruction_history: VecDeque::new(),
         }
     }
 
@@ -194,9 +194,10 @@ impl CPU {
 
         // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
         let cycles = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed) {
-            //println!("{:x} {:?}", self.pc, instruction);
+            self.instruction_history.push_front(format!("{:0>4X}: ${:0>2X}\t{:?}", self.pc, instruction_byte, instruction));
+            self.instruction_history.truncate(100);
+            
             let c = self.execute(instruction);
-            self.last_instruction = instruction;
 
             // Enable interrupts if previous instruction call was EI
             if self.ei_called {
@@ -209,8 +210,8 @@ impl CPU {
             c
         } else {
             let description = format!("0x{}{:x}", if prefixed { "cb" } else { "" }, instruction_byte);
-            panic!("Unknown instruction found for: {}\nLast instruction: {:?}",
-                description, self.last_instruction);
+            self.print_history();
+            panic!("Unknown instruction found for: {}", description);
         };
 
         // Read serial port, used to debug with Blargg's test rom
@@ -220,6 +221,10 @@ impl CPU {
             print!("{}", serial_transfer_data as char); // Maybe change to little endianess
             std::io::stdout().flush().unwrap();
             self.bus.write_byte(0xFF02, 0x01);
+
+            if serial_transfer_data as char == '0' {
+                self.print_history();
+            }
         }
 
         cycles
@@ -299,6 +304,13 @@ impl CPU {
         }
 
         tile_set
+    }
+
+    // Prints the instruction history
+    fn print_history(&self) {
+        for s in self.instruction_history.iter().rev() {
+            println!("{}", s);
+        }
     }
 
     // Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
@@ -446,26 +458,32 @@ impl CPU {
     */
     fn sub(&mut self, target: ByteTarget, carry: bool) -> usize {
         let mut cycles = 4;
-        let mut value: u8;
-        match target {
-            ByteTarget::A => { value = self.registers.a; },
-            ByteTarget::B => { value = self.registers.b; },
-            ByteTarget::C => { value = self.registers.c; },
-            ByteTarget::D => { value = self.registers.d; },
-            ByteTarget::E => { value = self.registers.e; },
-            ByteTarget::H => { value = self.registers.h; },
-            ByteTarget::L => { value = self.registers.l; },
-            ByteTarget::D8 => { value = self.read_next_byte(); cycles = 8 },
-            ByteTarget::HLI => { value = self.bus.read_byte(self.registers.get_hl()); cycles = 8 },
+        let source_value = match target {
+            ByteTarget::A => self.registers.a,
+            ByteTarget::B => self.registers.b,
+            ByteTarget::C => self.registers.c,
+            ByteTarget::D => self.registers.d,
+            ByteTarget::E => self.registers.e,
+            ByteTarget::H => self.registers.h,
+            ByteTarget::L => self.registers.l,
+            ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
+            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+        };
+        let (mut new_value, mut did_overflow) = self.registers.a.overflowing_sub(source_value);
+        let mut half_carry = (source_value & 0x0F) > (self.registers.a & 0x0F);
+
+        if carry { 
+            let (sbc_value, did_overflow2) = self.registers.a.overflowing_sub(self.registers.f.carry as u8); 
+            new_value = sbc_value;
+            did_overflow |= did_overflow2;
+            half_carry |= self.registers.f.carry as u8 > (self.registers.a & 0x0F);
         }
-        if carry { value += self.registers.f.carry as u8; }
-        let new_value = self.registers.a.wrapping_sub(value);
 
         // Carry bit is set if subtraction has to borrow
         self.registers.f.zero = new_value == 0;
         self.registers.f.subtract = true;
-        self.registers.f.carry = value > self.registers.a;
-        self.registers.f.half_carry = (value & 0x0F) > (self.registers.a & 0x0F);
+        self.registers.f.carry = did_overflow;
+        self.registers.f.half_carry = half_carry;
 
         self.registers.a = new_value;
 
