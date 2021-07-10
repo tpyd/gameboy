@@ -135,7 +135,7 @@ pub struct MemoryBus {
 
 impl MemoryBus {
     pub fn new() -> Self {
-        let rom = fs::read("test/cpu_instrs/individual/11-op a,(hl).gb").unwrap();
+        let rom = fs::read("test/cpu_instrs/individual/07-jr,jp,call,ret,rst.gb").unwrap();
         let rom_slice = rom.as_slice();
         let rom_header = &rom[..0x014F]; // Header info starts at 0x0100, but easier this way
 
@@ -196,7 +196,7 @@ impl MemoryBus {
         mem.write_byte(0xFF23, 0xBF); // NR44
         mem.write_byte(0xFF24, 0x77); // NR50
         mem.write_byte(0xFF25, 0xF3); // NR51
-        //[$FF26] = $F1-GB, $F0-SGB ; NR52
+        mem.write_byte(0xFF26, 0xF1); // NR52   ($F1 on GB, $F0 on SGB)
         mem.write_byte(0xFF40, 0x91); // LCDC
         mem.write_byte(0xFF47, 0xFC); // BGP
         mem.write_byte(0xFF48, 0xFF); // OBP0
@@ -253,13 +253,11 @@ impl MemoryBus {
         let cartridge_type = &header[0x147];
 
         // Extract MBC type
-        let mbc_type = match cartridge_type {
+        match cartridge_type {
             0x00 | 0x08..=0x09  => MBCType::None,
             0x01..=0x03         => MBCType::MBC1,
             _ => panic!("Cartridge uses unsupported MBC type"),
-        };
-
-        mbc_type
+        }
     }
 
     // Should be refactored in the future
@@ -283,7 +281,7 @@ fn read_cartridge_header(memory: &[u8]) {
 
     // Licensee code
     let licensee_code = &memory[0x144..=0x145];
-    let code = licensee_code[0] << 1 + licensee_code[1];
+    let code = (licensee_code[0] << 1).wrapping_add(licensee_code[1]);
     println!("Publisher: {}", utils::get_licensee_name(code));
 
     // Cartridge type
@@ -291,7 +289,7 @@ fn read_cartridge_header(memory: &[u8]) {
     println!("Cartridge type: {}", utils::get_cartridge_type(*cartridge_type));
 
     // ROM size
-    let rom_size = *&memory[0x148];
+    let rom_size = memory[0x148];
     let postfix = if rom_size < 0x5 {"KiB"} else {"MiB"};
     println!("ROM size: {} {}", 32 << rom_size, postfix);
 }

@@ -173,10 +173,21 @@ impl CPU {
         // Calculate how many times to run step depending on time_delta
         let cycles_per_nano = CLOCK as f32 / 1e9;
         let cycles_to_run = (cycles_per_nano * time_delta as f32) as usize;
+        let mut line_increment = 1;
 
         let mut cycles = 0;
         while cycles < cycles_to_run {
-            cycles += self.step()
+            cycles += self.step();
+            
+            // Update LY
+            if cycles > line_increment * 114 {
+                let mut new_ly = self.bus.read_byte(0xFF44) + 1;
+                if new_ly > 153 {
+                    new_ly = 0;
+                }
+                self.bus.write_byte(0xFF44, new_ly);
+                line_increment += 1;
+            }
         }
 
         // Return how many cycles have passed in those steps
@@ -192,10 +203,12 @@ impl CPU {
             instruction_byte = self.read_next_byte();
         }
 
+        
         // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
         let cycles = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed) {
             self.instruction_history.push_front(format!("{:0>4X}: ${:0>2X}\t{:?}", self.pc, instruction_byte, instruction));
             self.instruction_history.truncate(100);
+            //self.debug();
             
             let c = self.execute(instruction);
 
@@ -221,13 +234,24 @@ impl CPU {
             print!("{}", serial_transfer_data as char); // Maybe change to little endianess
             std::io::stdout().flush().unwrap();
             self.bus.write_byte(0xFF02, 0x01);
-
-            if serial_transfer_data as char == '0' {
-                self.print_history();
-            }
         }
 
         cycles
+    }
+
+    // Prints debug information in the console
+    fn debug(&self) {
+        println!("---------");
+        println!("AF: 0x{:0>4X}\nBC: 0x{:0>4X}\nDE: 0x{:0>4X}\nHL: 0x{:0>4X}",
+            self.registers.get_af(),
+            self.registers.get_bc(),
+            self.registers.get_de(),
+            self.registers.get_hl());
+        println!("---------");
+        println!("SP: 0x{:0>4X}", self.sp);
+        println!("PC: 0x{:0>4X}", self.pc);
+        println!("---------");
+        println!("{}", self.instruction_history.front().unwrap());
     }
 
     // Creates and returns a pixel buffer containing what should be drawn on screen
@@ -516,7 +540,7 @@ impl CPU {
 
                 self.registers.f.zero = new_value == 0;
                 self.registers.f.subtract = false;
-                self.registers.f.half_carry = (new_value.wrapping_sub(1) & 0x0F) + (new_value & 0x0F) > 0x0F;
+                self.registers.f.half_carry = (new_value.wrapping_sub(1) & 0x0F) == 0x0F;
             },
             ArithmeticType::Word(word_target) => {
                 match word_target {
@@ -558,7 +582,7 @@ impl CPU {
 
                 self.registers.f.zero = new_value == 0;
                 self.registers.f.subtract = true;
-                self.registers.f.half_carry = (new_value & 0x0F) > (new_value.wrapping_add(1) & 0x0F);
+                self.registers.f.half_carry = (new_value.wrapping_add(1) & 0x0F) == 0;
             },
             ArithmeticType::Word(word_target) => {
                 match word_target {
@@ -767,7 +791,7 @@ impl CPU {
 
         // Right arithmetic shift inserts msb insted of 0
         if !logic && !left {
-            source_value = source_value | msb;
+            source_value |= msb;
         }
 
         match target {
@@ -1065,7 +1089,7 @@ impl CPU {
             LoadType::HLFromSP => {
                 cycles = 12;
                 let next_byte = self.read_next_byte() as i8 as u16;
-                let source_value = self.sp + next_byte;
+                let source_value = self.sp.wrapping_add(next_byte);
                 self.registers.set_hl(source_value);
 
                 self.registers.f.zero = false;
@@ -1201,7 +1225,7 @@ impl CPU {
     */
     fn rst(&mut self, vec: RSTVec) -> usize {
         self.push_value(self.pc);
-        self.pc = 0x0000 + vec as u16;
+        self.pc = vec as u16;
 
         16
     }
@@ -1220,19 +1244,19 @@ impl CPU {
                 // larger than 9 means that it contains hex values (A, B, C...).
                 // Also have to add if lower nibble overflow occured.
                 // Add 6 to offset
-                reg_a += 0x06;
+                reg_a = reg_a.wrapping_add(0x06);
             }
 
             // Upper nibble
             if (reg_a & 0xF0) > 0x90 || self.registers.f.carry {
-                reg_a += 0x60;
+                reg_a = reg_a.wrapping_add(0x60);
                 self.registers.f.carry = true;
             }
         } else {
             // Same for subtraction, except we subtract 6
             // Lower nibble
             if (reg_a & 0x0F) > 0x09 || self.registers.f.half_carry {
-                reg_a -= 0x06;
+                reg_a = reg_a.wrapping_sub(0x06);
                 if (reg_a & 0xF0) == 0xF0 {
                     // Set carry flag if underflow occured
                     self.registers.f.carry = true;
@@ -1241,7 +1265,7 @@ impl CPU {
 
             // Upper nibble
             if (reg_a & 0xF0) > 0x90 || self.registers.f.carry {
-                reg_a -= 0x60;
+                reg_a = reg_a.wrapping_sub(0x60);
                 self.registers.f.carry = true;
             }
         }
