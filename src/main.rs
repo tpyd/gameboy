@@ -179,7 +179,7 @@ impl CPU {
         while cycles < cycles_to_run {
             cycles += self.step();
             
-            // Update LY
+            // Update LY (bad implementation i think)
             if cycles > line_increment * 114 {
                 let mut new_ly = self.bus.read_byte(0xFF44) + 1;
                 if new_ly > 153 {

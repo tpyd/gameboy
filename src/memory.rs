@@ -135,7 +135,7 @@ pub struct MemoryBus {
 
 impl MemoryBus {
     pub fn new() -> Self {
-        let rom = fs::read("test/cpu_instrs/individual/07-jr,jp,call,ret,rst.gb").unwrap();
+        let rom = fs::read("test/cpu_instrs/cpu_instrs.gb").unwrap();
         let rom_slice = rom.as_slice();
         let rom_header = &rom[..0x014F]; // Header info starts at 0x0100, but easier this way
 
