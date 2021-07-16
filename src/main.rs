@@ -1,6 +1,7 @@
 use minifb::{Key, Window, WindowOptions};
 use std::{collections::VecDeque, io::Write, time::{Duration, Instant}};
 use std::thread::sleep;
+use std::path::Path;
 
 mod instruction;
 mod utils;
@@ -149,21 +150,22 @@ struct CPU {
     bus: MemoryBus,
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
-    ime: bool,
+    ime: bool, // Interrupt Master Enable
     instruction_history: VecDeque<String>,
 }
 
 impl CPU {
+    #[warn(dead_code)]
     fn new() -> Self {
+        CPU::default()
+    }
+
+    #[warn(dead_code)]
+    fn with_rom(rom_path: &str) -> Self {
+        let path = Path::new(rom_path);
         CPU {
-            registers: Registers::new(),
-            pc: 0x0100,
-            sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
-            bus: MemoryBus::new(),
-            ei_called: false,
-            is_halted: false,
-            ime: true,
-            instruction_history: VecDeque::new(),
+            bus: MemoryBus::new(Some(path)),
+            ..Default::default()
         }
     }
 
@@ -214,8 +216,9 @@ impl CPU {
 
             // Enable interrupts if previous instruction call was EI
             if self.ei_called {
+                // Do nothing if instruction was EI to delay with one instruction
                 match Instruction::from_byte(instruction_byte, prefixed).unwrap() {
-                    Instruction::EI => {}, // Makes repeated calls to EI work as one call
+                    Instruction::EI => {},
                     _ => { self.ime = true; self.ei_called = false; },
                 }
             }
@@ -226,6 +229,11 @@ impl CPU {
             self.print_history();
             panic!("Unknown instruction found for: {}", description);
         };
+
+        // Handle interrupts
+        if self.ime {
+            self.handle_interrupts();
+        }
 
         // Read serial port, used to debug with Blargg's test rom
         let serial_transfer_data = self.bus.read_byte(0xFF01);      // SB
@@ -240,6 +248,7 @@ impl CPU {
     }
 
     // Prints debug information in the console
+    #[warn(dead_code)]
     fn debug(&self) {
         println!("---------");
         println!("AF: 0x{:0>4X}\nBC: 0x{:0>4X}\nDE: 0x{:0>4X}\nHL: 0x{:0>4X}",
@@ -249,7 +258,7 @@ impl CPU {
             self.registers.get_hl());
         println!("---------");
         println!("SP: 0x{:0>4X}", self.sp);
-        println!("PC: 0x{:0>4X}", self.pc);
+        println!("PC: 0x{:0>4X}", self.pc-1);
         println!("---------");
         println!("{}", self.instruction_history.front().unwrap());
     }
@@ -335,6 +344,18 @@ impl CPU {
         for s in self.instruction_history.iter().rev() {
             println!("{}", s);
         }
+    }
+
+    // Handles interrupts
+    fn handle_interrupts(&self) {
+        // IE contains which iterrupts are enabled
+        let ie = self.bus.read_byte(0xffff);
+
+        let vblank_enabled = (ie & 0b1) != 0;
+        let lcdstat_enabled = (ie >> 1) & 0b1 != 0;
+        let timer_enabled = (ie >> 2) & 0b1 != 0;
+        let serial_enabled = (ie >> 3) & 0b1 != 0;
+        let joypad_enabled = (ie >> 4) & 0b1 != 0;
     }
 
     // Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
@@ -1362,6 +1383,21 @@ impl CPU {
     }
 }
 
+impl Default for CPU {
+    fn default() -> Self {
+        CPU {
+            registers: Registers::new(),
+            pc: 0x0100,
+            sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
+            bus: MemoryBus::new(None),
+            ei_called: false,
+            is_halted: false,
+            ime: true,
+            instruction_history: VecDeque::new(),
+        }
+    }
+}
+
 const CLOCK: usize = 4194304; // in Hz
 const FPS: usize = 30;
 const ONE_FRAME_IN_CYCLES: usize = CLOCK / ( 4 * FPS );
@@ -1425,7 +1461,12 @@ fn main() {
     window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
     tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
-    let cpu = CPU::new();
+    let cpu = CPU::with_rom("test/cpu_instrs/cpu_instrs.gb");
+    cpu.bus.read_cartridge_header();
 
     run(cpu, window, tileset_window);
 }
+
+
+#[cfg(test)]
+mod test;

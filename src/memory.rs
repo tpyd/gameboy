@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use crate::utils;
 
 /**
@@ -134,8 +135,11 @@ pub struct MemoryBus {
 }
 
 impl MemoryBus {
-    pub fn new() -> Self {
-        let rom = fs::read("test/cpu_instrs/cpu_instrs.gb").unwrap();
+    pub fn new(rom_path: Option<&Path>) -> Self {
+        let rom = match rom_path {
+            Some(p) => fs::read(p).unwrap(),
+            None => vec![0; 32768],
+        };
         let rom_slice = rom.as_slice();
         let rom_header = &rom[..0x014F]; // Header info starts at 0x0100, but easier this way
 
@@ -176,8 +180,6 @@ impl MemoryBus {
             banks: memory_banks,
             gpu: GPU::new(),
         };
-
-        read_cartridge_header(&rom_header);
 
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
         // Memory defaults to 0 so some entries are removed
@@ -265,31 +267,30 @@ impl MemoryBus {
         self.gpu.get_tile(index, address_mode)
     }
 
-}
+    // Reads cartridge header data and prints it    
+    pub fn read_cartridge_header(&self) {
+        let memory = self.base;
+        
+        // Titles
+        let title_slice = &memory[0x134..=0x143];
+        print!("Title: ");
+        for c in title_slice {
+            print!("{}", *c as char);
+        }
+        println!();
 
-/**
- * Reads cartridge header data and prints it
- */
-fn read_cartridge_header(memory: &[u8]) {
-    // Title
-    let title_slice = &memory[0x134..=0x143];
-    print!("Title: ");
-    for c in title_slice {
-        print!("{}", *c as char);
+        // Licensee code
+        let licensee_code = &memory[0x144..=0x145];
+        let code = (licensee_code[0] << 1).wrapping_add(licensee_code[1]);
+        println!("Publisher: {}", utils::get_licensee_name(code));
+
+        // Cartridge type
+        let cartridge_type = &memory[0x147];
+        println!("Cartridge type: {}", utils::get_cartridge_type(*cartridge_type));
+
+        // ROM size
+        let rom_size = memory[0x148];
+        let postfix = if rom_size < 0x5 {"KiB"} else {"MiB"};
+        println!("ROM size: {} {}", 32 << rom_size, postfix);
     }
-    println!();
-
-    // Licensee code
-    let licensee_code = &memory[0x144..=0x145];
-    let code = (licensee_code[0] << 1).wrapping_add(licensee_code[1]);
-    println!("Publisher: {}", utils::get_licensee_name(code));
-
-    // Cartridge type
-    let cartridge_type = &memory[0x147];
-    println!("Cartridge type: {}", utils::get_cartridge_type(*cartridge_type));
-
-    // ROM size
-    let rom_size = memory[0x148];
-    let postfix = if rom_size < 0x5 {"KiB"} else {"MiB"};
-    println!("ROM size: {} {}", 32 << rom_size, postfix);
 }
