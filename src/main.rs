@@ -1,5 +1,5 @@
 use minifb::{Key, Window, WindowOptions};
-use std::{collections::VecDeque, io::Write, time::{Duration, Instant}};
+use std::{collections::VecDeque, io::Write, time::{self, Duration, Instant}};
 use std::thread::sleep;
 use std::path::Path;
 
@@ -169,36 +169,18 @@ impl CPU {
         }
     }
 
-    // Runs a specified amount of cycles depending on the time that passed since last frame.
-    // Returns the number of cycles run
-    fn run(&mut self, time_delta: u32) -> usize {
-        // Calculate how many times to run step depending on time_delta
-        let cycles_per_nano = CLOCK as f32 / 1e9;
-        let cycles_to_run = (cycles_per_nano * time_delta as f32) as usize;
-        let mut line_increment = 1;
-
+    // Run the gameboy for 17 556 clocks. Which equals to one screen update.
+    fn run(&mut self, cycles_to_run: u64) {
         let mut cycles = 0;
+
         while cycles < cycles_to_run {
             cycles += self.step();
-            
-            // Update LY (bad implementation i think)
-            if cycles > line_increment * 114 {
-                let mut new_ly = self.bus.read_byte(0xFF44) + 1;
-                if new_ly > 153 {
-                    new_ly = 0;
-                }
-                self.bus.write_byte(0xFF44, new_ly);
-                line_increment += 1;
-            }
         }
-
-        // Return how many cycles have passed in those steps
-        cycles
     }
 
     // Executes one CPU cycle. Reads and executes an instruction from the position of the pc and updates the pc
     // Returns the number of cycles performed
-    fn step(&mut self) -> usize {
+    fn step(&mut self) -> u64 {
         let mut instruction_byte = self.read_next_byte();
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
@@ -244,7 +226,7 @@ impl CPU {
             self.bus.write_byte(0xFF02, 0x01);
         }
 
-        cycles
+        cycles as u64
     }
 
     // Prints debug information in the console
@@ -1403,40 +1385,38 @@ impl Default for CPU {
     }
 }
 
-const CLOCK: usize = 4194304; // in Hz
-const FPS: usize = 60;
-const ONE_FRAME_IN_CYCLES: usize = CLOCK / ( 4 * FPS );
+const CLOCK: u64 = 4194304;
+const CYCLES_PER_SCREEN: u64 = 70224;
+const FPS: f32 = CLOCK as f32 / CYCLES_PER_SCREEN as f32;
+const MICROS_PER_FRAME: Duration = Duration::from_micros((1000.0 * 1000.0 / FPS) as u64);
 
 fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
     let mut window_buffer = [0; WIDTH * HEIGHT];
     let mut tileset_window_buffer = [0; TILESET_WIDTH * TILESET_HEIGHT];
-    let mut cycles_elapsed_in_frame = 0usize;
-    let mut now = Instant::now();
 
     while window.is_open() && tileset_window.is_open() &&
             !window.is_key_down(Key::Escape) && !tileset_window.is_key_down(Key::Escape) {
-        // Check how much time (in nanoseconds) has passed
-        let time_delta = now.elapsed().subsec_nanos();
-        now = Instant::now();
 
-        // Gameboy knows how many times to call step in this time
-        // Can't just run ONE_FRAME_IN_CYCLES steps as the emulator can run quicker than the actual gameboy
-        cycles_elapsed_in_frame += cpu.run(time_delta);
+        // 17 556 clocks (70 224 cycles) per frame. Equals 59.7 Hz refresh rate
+        let start_time = Instant::now();
+        cpu.run(CYCLES_PER_SCREEN);
+        let finish_time = Instant::now();
+        let diff = finish_time - start_time;
 
-        // If the gameboy should update the screen
-        if cycles_elapsed_in_frame >= ONE_FRAME_IN_CYCLES {
-            for (i, pixel) in cpu.pixel_buffer().iter().enumerate() {
-                window_buffer[i] = *pixel;
-            }
-            for (i, pixel) in cpu.tileset_buffer().iter().enumerate() {
-                tileset_window_buffer[i] = *pixel;
-            }
-            window.update_with_buffer(&window_buffer, WIDTH, HEIGHT).unwrap();
-            tileset_window.update_with_buffer(&tileset_window_buffer, TILESET_WIDTH, TILESET_HEIGHT).unwrap();
-            cycles_elapsed_in_frame = 0;
-        } else {
-            sleep(Duration::from_nanos(2))
+        // Sleep if cpu was faster than the gameboy expects
+        if MICROS_PER_FRAME > diff {
+            sleep(MICROS_PER_FRAME - diff);
         }
+
+        // Update screen buffer
+        for (i, pixel) in cpu.pixel_buffer().iter().enumerate() {
+            window_buffer[i] = *pixel;
+        }
+        for (i, pixel) in cpu.tileset_buffer().iter().enumerate() {
+            tileset_window_buffer[i] = *pixel;
+        }
+        window.update_with_buffer(&window_buffer, WIDTH, HEIGHT).unwrap();
+        tileset_window.update_with_buffer(&tileset_window_buffer, TILESET_WIDTH, TILESET_HEIGHT).unwrap();
     }
 }
 
@@ -1466,7 +1446,7 @@ fn main() {
     window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
     tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
-    let cpu = CPU::with_rom("test/cpu_instrs/cpu_instrs.gb");
+    let cpu = CPU::with_rom("test/cpu_instrs/individual/06-ld r,r.gb");
     cpu.bus.read_cartridge_header();
 
     run(cpu, window, tileset_window);

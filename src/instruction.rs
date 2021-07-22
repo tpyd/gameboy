@@ -415,7 +415,7 @@ impl Instruction {
             0xF3 => Some(Instruction::DI),
             0xFB => Some(Instruction::EI),
             0xCB => None, // Prefixed instruction should not land in this method
-            _ => None,
+            _ => Some(Instruction::NOP), // Not confirmed
         }
     }
 
