@@ -267,12 +267,17 @@ impl CPU {
     fn pixel_buffer(&mut self) -> Vec<u32> {
         let mut screen: Vec<u32> = Vec::new();
         screen.resize(WIDTH*HEIGHT, 0x00FFFFFF);
+        
+        let ldlc = self.bus.read_byte(0xFF40); // LCD Control
+        let stat = self.bus.read_byte(0xFF41); // LCD Status
+
+        // Have to update modes as we go through the screen
+        //stat = stat & 
 
         // If Bit 7 is not set, LCD is disabled. Return all white
-        let ldlc = self.bus.read_byte(0xFF40);
         if ldlc & 0x80 == 0 {
             return screen;
-        }
+        };
 
         let mut tile_map: Vec<u32> = Vec::new();
         tile_map.resize(256*256, 0); // tilemap is 32x32 tiles, each 8x8 pixels
@@ -1399,7 +1404,7 @@ impl Default for CPU {
 }
 
 const CLOCK: usize = 4194304; // in Hz
-const FPS: usize = 30;
+const FPS: usize = 60;
 const ONE_FRAME_IN_CYCLES: usize = CLOCK / ( 4 * FPS );
 
 fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
