@@ -172,9 +172,35 @@ impl CPU {
     // Run the gameboy for 17 556 clocks. Which equals to one screen update.
     fn run(&mut self, cycles_to_run: u64) {
         let mut cycles = 0;
+        let mut ly = 0;
 
-        while cycles < cycles_to_run {
-            cycles += self.step();
+        // Go through all the lines in the screen
+        for i in 0..144 {
+            ly += 1;
+            cycles = 0;
+
+            // OAM Search
+            while cycles < 80 {
+                cycles += self.step();
+            }
+
+            // Pixel transfer
+            while cycles < 252 {
+                cycles += self.step();
+            }
+
+            // H-Blank period
+            while cycles < 456 {
+                cycles += self.step();
+            }
+        }
+
+        // V-Blank period
+        for i in 0..10 {
+            ly += 1;
+            while cycles < 4560 {
+                cycles += self.step();
+            }
         }
     }
 
