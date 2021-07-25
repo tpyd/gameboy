@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
 use crate::utils;
 
 /**
@@ -128,7 +129,7 @@ impl GPU {
         0x8800 - 0x97FF tile set 2
 */
 pub struct MemoryBus {
-    base: [u8; 0x10000],
+    pub base: [u8; 0x10000], // TODO make field private
     mbc_type: MBCType,
     banks: Vec<[u8; 0x4000]>,
     gpu: GPU,
@@ -205,6 +206,11 @@ impl MemoryBus {
         mem.write_byte(0xFF49, 0xFF); // OBP1
 
         mem
+    }
+
+    // Returns a Rc with the base memory of the gameboy. Used by PPU.
+    pub fn get_mem_ref(&self) -> Rc<[u8; 0x10000]> {
+        Rc::new(self.base)
     }
 
     pub fn read_byte(&self, address: u16) -> u8 {

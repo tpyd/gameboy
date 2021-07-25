@@ -1,7 +1,8 @@
 use minifb::{Key, Window, WindowOptions};
-use std::{collections::VecDeque, io::Write, time::{self, Duration, Instant}};
+use std::{collections::VecDeque, io::Write, time::{Duration, Instant}};
 use std::thread::sleep;
 use std::path::Path;
+use std::rc::Rc;
 
 mod registers;
 use registers::Registers;
@@ -9,6 +10,8 @@ mod instruction;
 use instruction::*;
 mod memory;
 use memory::MemoryBus;
+mod ppu;
+use ppu::Ppu;
 mod utils;
 
 const WIDTH: usize = 160;
@@ -25,6 +28,7 @@ struct CPU {
     pc: u16, // Program counter, tells which instruction its currently running
     sp: u16, // Stack pointer, points to the top of the stack
     bus: MemoryBus,
+    ppu: Ppu,
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool, // Interrupt Master Enable
@@ -49,6 +53,7 @@ impl CPU {
     // Run the gameboy for 17 556 clocks. Which equals to one screen update.
     fn run(&mut self, cycles_to_run: u64) {
         let mut cycles = 0;
+        self.ppu.test();
 
         // Go through all the lines in the screen
         for ly in 0..144 {
@@ -1272,11 +1277,14 @@ impl CPU {
 
 impl Default for CPU {
     fn default() -> Self {
+        let mem = MemoryBus::new(None);
+        let mem_ref = mem.get_mem_ref();
         CPU {
             registers: Registers::new(),
             pc: 0x0100,
             sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
-            bus: MemoryBus::new(None),
+            bus: mem,
+            ppu: Ppu::new(mem_ref),
             ei_called: false,
             is_halted: false,
             ime: true,
