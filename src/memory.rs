@@ -264,7 +264,7 @@ impl MemoryBus {
         match cartridge_type {
             0x00 | 0x08..=0x09  => MBCType::None,
             0x01..=0x03         => MBCType::MBC1,
-            _ => panic!("Cartridge uses unsupported MBC type"),
+            _ => panic!("Cartridge type unsupported"),
         }
     }
 

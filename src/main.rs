@@ -2,7 +2,6 @@ use minifb::{Key, Window, WindowOptions};
 use std::{collections::VecDeque, io::Write, time::{Duration, Instant}};
 use std::thread::sleep;
 use std::path::Path;
-use std::rc::Rc;
 
 mod registers;
 use registers::Registers;
@@ -53,18 +52,19 @@ impl CPU {
     // Run the gameboy for 17 556 clocks. Which equals to one screen update.
     fn run(&mut self, cycles_to_run: u64) {
         let mut cycles = 0;
-        self.ppu.test();
 
         // Go through all the lines in the screen
         for ly in 0..144 {
             cycles = 0;
 
             // OAM Search
+            self.ppu.oam_search();
             while cycles < 80 {
                 cycles += self.step();
             }
 
             // Pixel transfer
+            self.ppy.pixel_transfer();
             while cycles < 252 {
                 cycles += self.step();
             }
