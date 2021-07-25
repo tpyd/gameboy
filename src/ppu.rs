@@ -1,4 +1,6 @@
-use std::rc::Rc;
+use std::{io::empty, rc::Rc};
+
+use crate::{HEIGHT, WIDTH};
 
 // The four different color values of a pixel
 // 1 1 => White
@@ -14,22 +16,29 @@ pub enum TilePixelValue {
     Three = 0x00000000,
 }
 
+
 pub struct Ppu {
     mem: Rc<[u8; 0x10000]>,
+    screen_buffer: [TilePixelValue; WIDTH * HEIGHT],
 }
 
 impl Ppu {
     pub fn new(mem_ref: Rc<[u8; 0x10000]>) -> Self {
         Ppu {
             mem: mem_ref,
+            screen_buffer: [TilePixelValue::Zero; WIDTH * HEIGHT],
         }
     }
-    
+
     pub fn oam_search(&self) {
 
     }
 
     pub fn pixel_transfer(&self) {
 
+    }
+
+    pub fn get_screen_buffer(&self) -> &[TilePixelValue; WIDTH * HEIGHT] {
+        &self.screen_buffer
     }
 }

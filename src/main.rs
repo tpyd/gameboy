@@ -64,7 +64,7 @@ impl CPU {
             }
 
             // Pixel transfer
-            self.ppy.pixel_transfer();
+            self.ppu.pixel_transfer();
             while cycles < 252 {
                 cycles += self.step();
             }
