@@ -1273,6 +1273,15 @@ impl CPU {
         self.pc = self.pc.wrapping_add(2);
         left | right
     }
+
+    fn read_byte(&self, address: u16) -> u8 {
+        self.bus.read_byte(address)
+    }
+
+    fn write_byte(&mut self, address: u16, value: u8) {
+        self.bus.write_byte(address, value);
+        self.ppu.update(address);
+    }
 }
 
 impl Default for CPU {

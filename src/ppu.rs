@@ -29,6 +29,12 @@ impl Ppu {
             screen_buffer: [TilePixelValue::Zero; WIDTH * HEIGHT],
         }
     }
+    
+    // Updates the PPUs internal data like the tilemap. The address is required to 
+    // only make the PPU update the necessary data instead of updating everything.
+    pub fn update(&mut self, address: u16) {
+        
+    }
 
     pub fn oam_search(&self) {
 
