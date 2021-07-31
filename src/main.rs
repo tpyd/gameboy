@@ -43,8 +43,14 @@ impl CPU {
     #[warn(dead_code)]
     fn with_rom(rom_path: &str) -> Self {
         let path = Path::new(rom_path);
+
+        // Have to recreate Ppu as well to recreate memory reference properly
+        let memory_bus = MemoryBus::new(Some(path));
+        let ppu = Ppu::new(memory_bus.get_mem_ref());
+
         CPU {
-            bus: MemoryBus::new(Some(path)),
+            bus: memory_bus,
+            ppu: ppu,
             ..Default::default()
         }
     }
@@ -123,12 +129,12 @@ impl CPU {
         }
 
         // Read serial port, used to debug with Blargg's test rom
-        let serial_transfer_data = self.bus.read_byte(0xFF01);      // SB
-        let serial_transfer_control = self.bus.read_byte(0xFF02);   // SC
+        let serial_transfer_data = self.read_byte(0xFF01);      // SB
+        let serial_transfer_control = self.read_byte(0xFF02);   // SC
         if serial_transfer_control == 0x81 {
             print!("{}", serial_transfer_data as char); // Maybe change to little endianess
             std::io::stdout().flush().unwrap();
-            self.bus.write_byte(0xFF02, 0x01);
+            self.write_byte(0xFF02, 0x01);
         }
 
         cycles as u64
@@ -155,8 +161,8 @@ impl CPU {
         let mut screen: Vec<u32> = Vec::new();
         screen.resize(WIDTH*HEIGHT, 0x00FFFFFF);
         
-        let ldlc = self.bus.read_byte(0xFF40); // LCD Control
-        let stat = self.bus.read_byte(0xFF41); // LCD Status
+        let ldlc = self.read_byte(0xFF40); // LCD Control
+        let stat = self.read_byte(0xFF41); // LCD Status
 
         // Have to update modes as we go through the screen
         //stat = stat & 
@@ -177,8 +183,8 @@ impl CPU {
         for y in 0..32 {
             for x in 0..32 {
                 // Get tile at this position
-                let tile_index = self.bus.read_byte(tile_set_start + 32*y + x);
-                let tile = self.bus.get_gpu_tile(tile_index, address_mode);
+                let tile_index = self.read_byte(tile_set_start + 32*y + x);
+                let tile = self.ppu.get_tile(tile_index, address_mode);
 
                 // Map tile into pixel buffer
                 for tile_y in 0..8 {
@@ -190,8 +196,8 @@ impl CPU {
         }
 
         // Find out where the screen is in the tilemap
-        let scroll_y = 0;//self.bus.read_byte(0xFF42);
-        let scroll_x = 0;//self.bus.read_byte(0xFF43);
+        let scroll_y = 0;//self.read_byte(0xFF42);
+        let scroll_x = 0;//self.read_byte(0xFF43);
 
         // Crop buffer to screen
         // TODO add so screen view wraps to other side
@@ -217,7 +223,7 @@ impl CPU {
         for x in 0..24 {
             for y in 0..16 {
                 // Get the tile at this position
-                let tile = self.bus.get_gpu_tile(((x as u32)*((y as u32)+1)) as u8, 0x8000);
+                let tile = self.ppu.get_tile(((x as u32)*((y as u32)+1)) as u8, 0x8000);
 
                 // Map tile to tile_set buffer
                 for tile_y in 0..8 {
@@ -241,7 +247,7 @@ impl CPU {
     // Handles interrupts
     fn handle_interrupts(&self) {
         // IE contains which iterrupts are enabled
-        let ie = self.bus.read_byte(0xffff);
+        let ie = self.read_byte(0xffff);
 
         let vblank_enabled = (ie & 0b1) != 0;
         let lcdstat_enabled = (ie >> 1) & 0b1 != 0;
@@ -330,7 +336,7 @@ impl CPU {
                     ByteTarget::H => self.registers.h,
                     ByteTarget::L => self.registers.l,
                     ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
-                    ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+                    ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
                 };
                 let (mut new_value, mut did_overflow) = self.registers.a.overflowing_add(source_value);
                 let mut half_carry = (((self.registers.a & 0xf) + (source_value & 0xf)) & 0x10) == 0x10;
@@ -404,7 +410,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
-            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
         };
         let (mut new_value, mut did_overflow) = self.registers.a.overflowing_sub(source_value);
         let mut half_carry = (source_value & 0x0F) > (self.registers.a & 0x0F);
@@ -444,8 +450,8 @@ impl CPU {
                     ByteTarget::H => { self.registers.h = self.registers.h.wrapping_add(1); self.registers.h },
                     ByteTarget::L => { self.registers.l = self.registers.l.wrapping_add(1); self.registers.l },
                     ByteTarget::HLI => {
-                        let value = self.bus.read_byte(self.registers.get_hl()).wrapping_add(1);
-                        self.bus.write_byte(self.registers.get_hl(), value);
+                        let value = self.read_byte(self.registers.get_hl()).wrapping_add(1);
+                        self.write_byte(self.registers.get_hl(), value);
                         value
                     },
                     _ => panic!("Got invalid INC instruction.")
@@ -486,8 +492,8 @@ impl CPU {
                     ByteTarget::H => { self.registers.h = self.registers.h.wrapping_sub(1); self.registers.h },
                     ByteTarget::L => { self.registers.l = self.registers.l.wrapping_sub(1); self.registers.l },
                     ByteTarget::HLI => {
-                        let value = self.bus.read_byte(self.registers.get_hl()).wrapping_sub(1);
-                        self.bus.write_byte(self.registers.get_hl(), value);
+                        let value = self.read_byte(self.registers.get_hl()).wrapping_sub(1);
+                        self.write_byte(self.registers.get_hl(), value);
                         value
                     },
                     _ => panic!("Got invalid DEC instruction")
@@ -526,7 +532,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
-            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
         };
         self.registers.a &= source_value;
 
@@ -553,7 +559,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
-            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
         };
 
         self.registers.f.zero = (self.registers.a ^ source_value) == 0;
@@ -579,7 +585,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
-            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
         };
         self.registers.a |= source_value;
 
@@ -606,7 +612,7 @@ impl CPU {
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
             ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
-            ByteTarget::HLI => { cycles = 8; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
         };
         let (new_value, carry) = self.registers.a.overflowing_sub(source_value);
 
@@ -634,7 +640,7 @@ impl CPU {
             ByteTarget::E => self.registers.e,
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
-            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 16; self.read_byte(self.registers.get_hl()) },
             ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in rotate instruction"),
         };
 
@@ -666,7 +672,7 @@ impl CPU {
             ByteTarget::E => self.registers.e = source_value,
             ByteTarget::H => self.registers.h = source_value,
             ByteTarget::L => self.registers.l = source_value,
-            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            ByteTarget::HLI => self.write_byte(self.registers.get_hl(), source_value),
             _ => {},
         }
 
@@ -693,7 +699,7 @@ impl CPU {
             ByteTarget::E => self.registers.e,
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
-            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 16; self.read_byte(self.registers.get_hl()) },
             ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in shift instruction"),
         };
 
@@ -715,7 +721,7 @@ impl CPU {
             ByteTarget::E => self.registers.e = source_value,
             ByteTarget::H => self.registers.h = source_value,
             ByteTarget::L => self.registers.l = source_value,
-            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            ByteTarget::HLI => self.write_byte(self.registers.get_hl(), source_value),
             _ => {},
         }
 
@@ -741,7 +747,7 @@ impl CPU {
             ByteTarget::E => self.registers.e,
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
-            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 16; self.read_byte(self.registers.get_hl()) },
             ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in SWAP instruction"),
         };
 
@@ -757,7 +763,7 @@ impl CPU {
             ByteTarget::E => self.registers.e = source_value,
             ByteTarget::H => self.registers.h = source_value,
             ByteTarget::L => self.registers.l = source_value,
-            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            ByteTarget::HLI => self.write_byte(self.registers.get_hl(), source_value),
             _ => {},
         }
 
@@ -783,7 +789,7 @@ impl CPU {
             ByteTarget::E => self.registers.e,
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
-            ByteTarget::HLI => { cycles = 12; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 12; self.read_byte(self.registers.get_hl()) },
             ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in BIT instruction"),
         };
 
@@ -809,7 +815,7 @@ impl CPU {
             ByteTarget::E => self.registers.e,
             ByteTarget::H => self.registers.h,
             ByteTarget::L => self.registers.l,
-            ByteTarget::HLI => { cycles = 16; self.bus.read_byte(self.registers.get_hl()) },
+            ByteTarget::HLI => { cycles = 16; self.read_byte(self.registers.get_hl()) },
             ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in RES instruction"),
         };
 
@@ -826,7 +832,7 @@ impl CPU {
             ByteTarget::E => self.registers.e = source_value,
             ByteTarget::H => self.registers.h = source_value,
             ByteTarget::L => self.registers.l = source_value,
-            ByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+            ByteTarget::HLI => self.write_byte(self.registers.get_hl(), source_value),
             _ => {},
         }
 
@@ -909,7 +915,7 @@ impl CPU {
                     LoadByteSource::H => self.registers.h,
                     LoadByteSource::L => self.registers.l,
                     LoadByteSource::D8 => { cycles += 4; self.read_next_byte() },
-                    LoadByteSource::HLI => { cycles += 4; self.bus.read_byte(self.registers.get_hl()) },
+                    LoadByteSource::HLI => { cycles += 4; self.read_byte(self.registers.get_hl()) },
                 };
                 match target {
                     LoadByteTarget::A => self.registers.a = source_value,
@@ -919,7 +925,7 @@ impl CPU {
                     LoadByteTarget::E => self.registers.e = source_value,
                     LoadByteTarget::H => self.registers.h = source_value,
                     LoadByteTarget::L => self.registers.l = source_value,
-                    LoadByteTarget::HLI => { cycles += 4; self.bus.write_byte(self.registers.get_hl(), source_value) },
+                    LoadByteTarget::HLI => { cycles += 4; self.write_byte(self.registers.get_hl(), source_value) },
                 };
             },
             LoadType::Word(target, source) => {
@@ -935,7 +941,7 @@ impl CPU {
                     LoadWordTarget::SP => self.sp = source_value,
                     LoadWordTarget::D16 => {
                         let word = self.read_next_word();
-                        self.bus.write_byte(word, (source_value & 0x00FF) as u8);
+                        self.write_byte(word, (source_value & 0x00FF) as u8);
                         cycles = 20
                     }
                 }
@@ -943,16 +949,16 @@ impl CPU {
             LoadType::AFromIndirect(source) => {
                 cycles = 8;
                 let source_value = match source {
-                    LoadMemoryLocation::BC => self.bus.read_byte(self.registers.get_bc()),
-                    LoadMemoryLocation::DE => self.bus.read_byte(self.registers.get_de()),
+                    LoadMemoryLocation::BC => self.read_byte(self.registers.get_bc()),
+                    LoadMemoryLocation::DE => self.read_byte(self.registers.get_de()),
                     LoadMemoryLocation::HLpostinc => {
-                        let value = self.bus.read_byte(self.registers.get_hl());
+                        let value = self.read_byte(self.registers.get_hl());
                         self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
                         value
                     },
                     LoadMemoryLocation::HLpredec => {
                         self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
-                        self.bus.read_byte(self.registers.get_hl())
+                        self.read_byte(self.registers.get_hl())
                     }
                 };
                 self.registers.a = source_value;
@@ -961,15 +967,15 @@ impl CPU {
                 cycles = 8;
                 let source_value = self.registers.a;
                 match target {
-                    LoadMemoryLocation::BC => self.bus.write_byte(self.registers.get_bc(), source_value),
-                    LoadMemoryLocation::DE => self.bus.write_byte(self.registers.get_de(), source_value),
+                    LoadMemoryLocation::BC => self.write_byte(self.registers.get_bc(), source_value),
+                    LoadMemoryLocation::DE => self.write_byte(self.registers.get_de(), source_value),
                     LoadMemoryLocation::HLpostinc => {
-                        self.bus.write_byte(self.registers.get_hl(), source_value);
+                        self.write_byte(self.registers.get_hl(), source_value);
                         self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
                     },
                     LoadMemoryLocation::HLpredec => {
                         self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
-                        self.bus.write_byte(self.registers.get_hl(), source_value);
+                        self.write_byte(self.registers.get_hl(), source_value);
                     },
                 }
             },
@@ -979,10 +985,10 @@ impl CPU {
                     ByteAddress::D8 => {
                         cycles = 12;
                         let byte = self.read_next_byte();
-                        self.bus.read_byte(0xFF00 + byte as u16)
+                        self.read_byte(0xFF00 + byte as u16)
                     },
-                    ByteAddress::C => self.bus.read_byte(0xFF00 + self.registers.c as u16),
-                    ByteAddress::D16 => { let word = self.read_next_word(); self.bus.read_byte(word) },
+                    ByteAddress::C => self.read_byte(0xFF00 + self.registers.c as u16),
+                    ByteAddress::D16 => { let word = self.read_next_word(); self.read_byte(word) },
                 };
                 self.registers.a = source_value;
             },
@@ -993,10 +999,10 @@ impl CPU {
                     ByteAddress::D8 => {
                         cycles = 12;
                         let byte = self.read_next_byte();
-                        self.bus.write_byte(0xFF00 + byte as u16, source_value)
+                        self.write_byte(0xFF00 + byte as u16, source_value)
                     },
-                    ByteAddress::C => self.bus.write_byte(0xFF00 + self.registers.c as u16, source_value),
-                    ByteAddress::D16 => { let word = self.read_next_word(); self.bus.write_byte(word, source_value) },
+                    ByteAddress::C => self.write_byte(0xFF00 + self.registers.c as u16, source_value),
+                    ByteAddress::D16 => { let word = self.read_next_word(); self.write_byte(word, source_value) },
                 }
             },
             LoadType::HLFromSP => {
@@ -1038,10 +1044,10 @@ impl CPU {
     // Separate method for pushing a value to the stack
     fn push_value(&mut self, value: u16) {
         self.sp = self.sp.wrapping_sub(1);
-        self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
+        self.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
 
         self.sp = self.sp.wrapping_sub(1);
-        self.bus.write_byte(self.sp, (value & 0x00FF) as u8);
+        self.write_byte(self.sp, (value & 0x00FF) as u8);
     }
 
     /*
@@ -1070,10 +1076,10 @@ impl CPU {
 
     // Separate function for popping a value from the stack
     fn pop_value(&mut self) -> u16 {
-        let lsb = self.bus.read_byte(self.sp) as u16;
+        let lsb = self.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
-        let msb = self.bus.read_byte(self.sp) as u16;
+        let msb = self.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
         
         (msb << 8) | lsb
@@ -1261,24 +1267,28 @@ impl CPU {
 
     // Reads the next byte and increments the pc
     fn read_next_byte(&mut self) -> u8 {
-        let next_byte = self.bus.read_byte(self.pc);
+        let next_byte = self.read_byte(self.pc);
         self.pc = self.pc.wrapping_add(1);
         next_byte
     }
 
     // Reads the next word  and increments the pc
     fn read_next_word(&mut self) -> u16 {
-        let right = self.bus.read_byte(self.pc) as u16;
-        let left = (self.bus.read_byte(self.pc.wrapping_add(1)) as u16) << 8;
+        let right = self.read_byte(self.pc) as u16;
+        let left = (self.read_byte(self.pc.wrapping_add(1)) as u16) << 8;
         self.pc = self.pc.wrapping_add(2);
         left | right
     }
 
+    // Read value from memory
     fn read_byte(&self, address: u16) -> u8 {
+        let address = address as usize;
         self.bus.read_byte(address)
     }
 
+    // Write value to memory
     fn write_byte(&mut self, address: u16, value: u8) {
+        let address = address as usize;
         self.bus.write_byte(address, value);
         self.ppu.update(address);
     }
@@ -1287,13 +1297,13 @@ impl CPU {
 impl Default for CPU {
     fn default() -> Self {
         let mem = MemoryBus::new(None);
-        let mem_ref = mem.get_mem_ref();
+        let ppu = Ppu::new(mem.get_mem_ref());
         CPU {
             registers: Registers::new(),
             pc: 0x0100,
             sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
             bus: mem,
-            ppu: Ppu::new(mem_ref),
+            ppu: ppu,
             ei_called: false,
             is_halted: false,
             ime: true,
