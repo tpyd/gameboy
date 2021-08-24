@@ -1,3 +1,16 @@
+// Macro to allocate arrays on heap
+#[macro_export]
+macro_rules! boxed_array {
+    ($val:expr ; $len:expr) => {{
+        fn vec_to_boxed_array<T>(vec: Vec<T>) -> Box<[T; $len]> {
+            let boxed_slice = vec.into_boxed_slice();
+            let ptr = Box::into_raw(boxed_slice) as *mut [T; $len];
+            unsafe { Box::from_raw(ptr) }
+        }
+        vec_to_boxed_array(vec![$val; $len])
+    }};
+}
+
 /**
  * Convert licensee code in the cartridge to a readable string
  */

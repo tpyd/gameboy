@@ -64,13 +64,13 @@ impl CPU {
             cycles = 0;
 
             // OAM Search
-            self.ppu.oam_search();
+            self.ppu.oam_search(ly);
             while cycles < 80 {
                 cycles += self.step();
             }
 
             // Pixel transfer
-            self.ppu.pixel_transfer();
+            self.ppu.pixel_transfer(ly);
             while cycles < 252 {
                 cycles += self.step();
             }
@@ -98,13 +98,13 @@ impl CPU {
             instruction_byte = self.read_next_byte();
         }
 
-        
+
         // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
         let cycles = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed) {
             self.instruction_history.push_front(format!("{:0>4X}: ${:0>2X}\t{:?}", self.pc, instruction_byte, instruction));
             self.instruction_history.truncate(100);
             //self.debug();
-            
+
             let c = self.execute(instruction);
 
             // Enable interrupts if previous instruction call was EI
@@ -160,12 +160,12 @@ impl CPU {
     fn pixel_buffer(&mut self) -> Vec<u32> {
         let mut screen: Vec<u32> = Vec::new();
         screen.resize(WIDTH*HEIGHT, 0x00FFFFFF);
-        
+
         let ldlc = self.read_byte(0xFF40); // LCD Control
         let stat = self.read_byte(0xFF41); // LCD Status
 
         // Have to update modes as we go through the screen
-        //stat = stat & 
+        //stat = stat &
 
         // If Bit 7 is not set, LCD is disabled. Return all white
         if ldlc & 0x80 == 0 {
@@ -340,9 +340,9 @@ impl CPU {
                 };
                 let (mut new_value, mut did_overflow) = self.registers.a.overflowing_add(source_value);
                 let mut half_carry = (((self.registers.a & 0xf) + (source_value & 0xf)) & 0x10) == 0x10;
-                
-                // Handle ADC 
-                if carry { 
+
+                // Handle ADC
+                if carry {
                     let (adc_value, adc_overflow) = new_value.overflowing_add(self.registers.f.carry as u8);
                     new_value = adc_value;
                     did_overflow |= adc_overflow;
@@ -415,8 +415,8 @@ impl CPU {
         let (mut new_value, mut did_overflow) = self.registers.a.overflowing_sub(source_value);
         let mut half_carry = (source_value & 0x0F) > (self.registers.a & 0x0F);
 
-        if carry { 
-            let (sbc_value, did_overflow2) = self.registers.a.overflowing_sub(self.registers.f.carry as u8); 
+        if carry {
+            let (sbc_value, did_overflow2) = self.registers.a.overflowing_sub(self.registers.f.carry as u8);
             new_value = sbc_value;
             did_overflow |= did_overflow2;
             half_carry |= self.registers.f.carry as u8 > (self.registers.a & 0x0F);
@@ -1081,7 +1081,7 @@ impl CPU {
 
         let msb = self.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
-        
+
         (msb << 8) | lsb
     }
 
@@ -1318,8 +1318,8 @@ const FPS: f32 = CLOCK as f32 / CYCLES_PER_SCREEN as f32;
 const MICROS_PER_FRAME: Duration = Duration::from_micros((1000.0 * 1000.0 / FPS) as u64);
 
 fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
-    let mut window_buffer = [0; WIDTH * HEIGHT];
-    let mut tileset_window_buffer = [0; TILESET_WIDTH * TILESET_HEIGHT];
+    let mut window_buffer = vec![0; WIDTH * HEIGHT];
+    let mut tileset_window_buffer = vec![0; TILESET_WIDTH * TILESET_HEIGHT];
 
     while window.is_open() && tileset_window.is_open() &&
             !window.is_key_down(Key::Escape) && !tileset_window.is_key_down(Key::Escape) {
@@ -1336,14 +1336,14 @@ fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
         }
 
         // Update screen buffer
-        for (i, pixel) in cpu.pixel_buffer().iter().enumerate() {
-            window_buffer[i] = *pixel;
+        for (i, pixel) in cpu.ppu.get_screen_buffer().iter().enumerate() {
+            window_buffer[i] = *pixel as u32;
         }
         for (i, pixel) in cpu.tileset_buffer().iter().enumerate() {
             tileset_window_buffer[i] = *pixel;
         }
-        window.update_with_buffer(&window_buffer, WIDTH, HEIGHT).unwrap();
-        tileset_window.update_with_buffer(&tileset_window_buffer, TILESET_WIDTH, TILESET_HEIGHT).unwrap();
+        window.update_with_buffer(window_buffer.as_slice(), WIDTH, HEIGHT).unwrap();
+        tileset_window.update_with_buffer(tileset_window_buffer.as_slice(), TILESET_WIDTH, TILESET_HEIGHT).unwrap();
     }
 }
 

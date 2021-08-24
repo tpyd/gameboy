@@ -2,6 +2,8 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
 use std::rc::Rc;
+use std::boxed::Box;
+use crate::boxed_array;
 use crate::utils;
 
 /**
@@ -23,7 +25,7 @@ enum MBCType {
         0x8800 - 0x97FF tile set 2
 */
 pub struct MemoryBus {
-    pub base: Rc<RefCell<[u8; 0x10000]>>, // TODO make field private
+    pub base: Rc<RefCell<Box<[u8; 0x10000]>>>, // TODO make field private
     mbc_type: MBCType,
     banks: Vec<[u8; 0x4000]>,
 }
@@ -38,7 +40,7 @@ impl MemoryBus {
         let rom_header = &rom[..0x014F]; // Header info starts at 0x0100, but easier this way
 
         // Load data into memory depending on cartridge configuration
-        let mut memory_base = [0u8; 0x10000];
+        let mut memory_base = boxed_array![0u8; 0x10000];
         let mut memory_banks = Vec::new();
         let mbc_type = MemoryBus::get_cartridge_type(rom_header);
         match mbc_type {
@@ -101,7 +103,7 @@ impl MemoryBus {
     }
 
     // Returns a Rc with the base memory of the gameboy. Used by PPU.
-    pub fn get_mem_ref(&self) -> Rc<RefCell<[u8; 0x10000]>> {
+    pub fn get_mem_ref(&self) -> Rc<RefCell<Box<[u8; 0x10000]>>> {
         self.base.clone()
     }
 
@@ -150,10 +152,10 @@ impl MemoryBus {
         }
     }
 
-    // Reads cartridge header data and prints it    
+    // Reads cartridge header data and prints it
     pub fn read_cartridge_header(&self) {
         let memory = self.base.borrow();
-        
+
         // Titles
         let title_slice = &memory[0x134..=0x143];
         print!("Title: ");
