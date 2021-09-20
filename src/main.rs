@@ -12,11 +12,9 @@ use memory::MemoryBus;
 mod ppu;
 use ppu::Ppu;
 mod utils;
+mod constants;
+use constants::*;
 
-const WIDTH: usize = 160;
-const HEIGHT: usize = 144;
-const TILESET_WIDTH: usize = 24*8; // 8x8 pixels
-const TILESET_HEIGHT: usize = 16*8;
 
 
 /*
@@ -184,7 +182,7 @@ impl CPU {
             for x in 0..32 {
                 // Get tile at this position
                 let tile_index = self.read_byte(tile_set_start + 32*y + x);
-                let tile = self.ppu.get_tile(tile_index, address_mode);
+                let tile = self.ppu.get_tile(tile_index as u16, address_mode);
 
                 // Map tile into pixel buffer
                 for tile_y in 0..8 {
@@ -223,7 +221,7 @@ impl CPU {
         for x in 0..24 {
             for y in 0..16 {
                 // Get the tile at this position
-                let tile = self.ppu.get_tile(((x as u32)*((y as u32)+1)) as u8, 0x8000);
+                let tile = self.ppu.get_tile(((x as u32)*((y as u32)+1)) as u16, 0x8000);
 
                 // Map tile to tile_set buffer
                 for tile_y in 0..8 {
@@ -1378,7 +1376,3 @@ fn main() {
 
     run(cpu, window, tileset_window);
 }
-
-
-#[cfg(test)]
-mod test;

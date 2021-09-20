@@ -1,14 +1,12 @@
-// Macro to allocate arrays on heap
-#[macro_export]
-macro_rules! boxed_array {
-    ($val:expr ; $len:expr) => {{
-        fn vec_to_boxed_array<T>(vec: Vec<T>) -> Box<[T; $len]> {
-            let boxed_slice = vec.into_boxed_slice();
-            let ptr = Box::into_raw(boxed_slice) as *mut [T; $len];
-            unsafe { Box::from_raw(ptr) }
-        }
-        vec_to_boxed_array(vec![$val; $len])
-    }};
+/*
+    Allocates an array on the heap, filled with the given inital value.
+*/
+pub fn alloc_boxed_array<T: Clone + Default, const N: usize>() -> Box<[T; N]> {
+    use std::convert::TryInto;
+
+    let vec = vec![T::default(); N];
+    let box_slice: Box<[T]> = vec.into();
+    box_slice.try_into().ok().unwrap()
 }
 
 /**

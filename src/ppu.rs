@@ -1,8 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
-
-use crate::{HEIGHT, WIDTH};
-const FULL_WIDTH: usize = 256;
-const FULL_HEIGHT: usize = 256;
+use crate::utils;
+use crate::constants::*;
 
 // The four different color values of a pixel
 // 1 1 => White
@@ -18,6 +16,12 @@ pub enum TilePixelValue {
     Three = 0x00000000,
 }
 
+impl Default for TilePixelValue {
+    fn default() -> Self {
+        TilePixelValue::Zero
+    }
+}
+
 // A tile is 8x8 pixels.
 // Since each pixel uses 2 bits, the size of one tile is 8*8*2/8 = 16 bytes
 type Tile = [[TilePixelValue; 8]; 8];
@@ -26,18 +30,20 @@ fn empty_tile() -> Tile {
 }
 
 pub struct Ppu {
-    pub mem: Rc<RefCell<Box<[u8; 0x10000]>>>,
-    screen_buffer: [TilePixelValue; FULL_HEIGHT * FULL_WIDTH],
-    tile_set: [Tile; 384],
+    pub mem: Rc<RefCell<[u8; 0x10000]>>,
+    screen_buffer: Box<[TilePixelValue; BG_SIZE]>,
+    tile_set: Vec<Tile>, // 384 tiles in the tileset
     current_row_tiles: Vec<Tile>,
 }
 
 impl Ppu {
-    pub fn new(mem_ref: Rc<RefCell<Box<[u8; 0x10000]>>>) -> Self {
+    pub fn new(mem_ref: Rc<RefCell<[u8; 0x10000]>>) -> Self {
+        let screen_buffer = utils::alloc_boxed_array();
+
         Ppu {
             mem: mem_ref,
-            screen_buffer: [TilePixelValue::Zero; FULL_HEIGHT * FULL_WIDTH],
-            tile_set: [empty_tile(); 384],
+            screen_buffer: screen_buffer,
+            tile_set: vec![empty_tile(); 384],
             current_row_tiles: Vec::new(),
         }
     }
@@ -91,17 +97,28 @@ impl Ppu {
         }
     }
 
+    // Gets the tiles on the current scanline and stores them for the pixel transfer
     pub fn oam_search(&mut self, ly: u8) {
-        let ldlc = self.mem.borrow()[0xFF40];
+        let mem_ref = self.mem.borrow();
+
+        let ldlc = mem_ref[0xFF40];
         let address_mode = if ldlc & 0x04 == 0 { 0x8000 } else { 0x8800 };
 
-        let tile_index_start = (ly / 8) * 32; // 32 is row offset
+        let scy = mem_ref[0xFF42];
+        //let scx = mem_ref[0xFF43];
+
+        let tile_y_start = (scy as u16 + ly as u16) % 256 / 16;
+        //let tile_x_start = scx as u16 / 16;
+        let tile_start = 0x9800 + tile_y_start * 32;// + tile_x_start;
+
         self.current_row_tiles.clear();
-        for i in tile_index_start..tile_index_start + 32 {
+        println!("tile_index_start: {}", tile_start);
+        for i in tile_start..tile_start + 32 { // Does not take scx into account atm
             self.current_row_tiles.push(self.get_tile(i, address_mode));
         }
     }
 
+    // Uses values from OAM search and puts them onto the screen
     pub fn pixel_transfer(&mut self, ly: u8) {
         for x in 0..32*8 {
             let current_tile = self.current_row_tiles[x / 8];
@@ -110,17 +127,20 @@ impl Ppu {
     }
 
     pub fn get_screen_buffer(&self) -> &[TilePixelValue] {
-        &self.screen_buffer
+        &self.screen_buffer[0..SCREEN_SIZE]
     }
 
-    // TODO remove this
     // Returns the tile at the given index depending on whether the address mode is $8000 or not (set by LDLC bit 4)
-    pub fn get_tile(&self, index: u8, address_mode: u16) -> Tile {
+    pub fn get_tile(&self, index: u16, address_mode: u16) -> Tile {
+        let mem_ref = self.mem.borrow();
+        let tile_index = mem_ref[index as usize] as usize;
+
         if address_mode == 0x8000 {
-            self.tile_set[index as usize]
+            // $8000 mode uses 0x8000 as base pointer and unsigned adressing
+            self.tile_set[tile_index]
         } else {
             // $8800 mode uses 0x9000 as base address and signed indexing
-            self.tile_set[255u16.wrapping_add((index as i8 + 1) as u16) as usize]
+            self.tile_set[255u16.wrapping_add((tile_index as i8 + 1) as u16) as usize]
         }
     }
 }
