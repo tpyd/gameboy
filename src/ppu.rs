@@ -33,17 +33,20 @@ pub struct Ppu {
     pub mem: Rc<RefCell<[u8; 0x10000]>>,
     screen_buffer: Box<[TilePixelValue; BG_SIZE]>,
     tile_set: Vec<Tile>, // 384 tiles in the tileset
+    tile_set_buffer: Box<[TilePixelValue; TILESET_SIZE]>,
     current_row_tiles: Vec<Tile>,
 }
 
 impl Ppu {
     pub fn new(mem_ref: Rc<RefCell<[u8; 0x10000]>>) -> Self {
         let screen_buffer = utils::alloc_boxed_array();
+        let tile_set_buffer = utils::alloc_boxed_array();
 
         Ppu {
             mem: mem_ref,
             screen_buffer: screen_buffer,
             tile_set: vec![empty_tile(); 384],
+            tile_set_buffer: tile_set_buffer,
             current_row_tiles: Vec::new(),
         }
     }
@@ -55,6 +58,8 @@ impl Ppu {
             0x8000..=0x97FF => self.update_tiledata(address),
             _ => {},
         }
+
+        self.update_tiledata_buffer();
     }
 
     // Updates the internal tiledata
@@ -97,6 +102,25 @@ impl Ppu {
         }
     }
 
+    // Updates the internal tiledata rendering buffer
+    fn update_tiledata_buffer(&mut self) {
+        // Do one row at a time
+        for y in 0..TILESET_HEIGHT {
+
+            // Get all tiles belonging to the current row.
+            // This is just grabbing 24 tiles at a time.
+            let grid_row = y / 8;
+            let tile_row = y % 8;
+            let tiles = &self.tile_set[grid_row..grid_row + 8];
+            let mut row_pixels = [TilePixelValue::Zero; TILESET_WIDTH];
+
+            let mut x = 0;
+            for tile in tiles {
+                
+            }
+        }
+    }
+
     // Gets the tiles on the current scanline and stores them for the pixel transfer
     pub fn oam_search(&mut self, ly: u8) {
         let mem_ref = self.mem.borrow();
@@ -112,7 +136,6 @@ impl Ppu {
         let tile_start = 0x9800 + tile_y_start * 32;// + tile_x_start;
 
         self.current_row_tiles.clear();
-        println!("tile_index_start: {}", tile_start);
         for i in tile_start..tile_start + 32 { // Does not take scx into account atm
             self.current_row_tiles.push(self.get_tile(i, address_mode));
         }
@@ -128,6 +151,10 @@ impl Ppu {
 
     pub fn get_screen_buffer(&self) -> &[TilePixelValue] {
         &self.screen_buffer[0..SCREEN_SIZE]
+    }
+
+    pub fn get_tileset_buffer(&self) -> &[TilePixelValue] {
+        &self.tile_set_buffer[0..TILESET_SIZE]
     }
 
     // Returns the tile at the given index depending on whether the address mode is $8000 or not (set by LDLC bit 4)
