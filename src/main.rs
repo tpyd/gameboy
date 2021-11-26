@@ -1337,9 +1337,20 @@ fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
         for (i, pixel) in cpu.ppu.get_screen_buffer().iter().enumerate() {
             window_buffer[i] = *pixel as u32;
         }
-        for (i, pixel) in cpu.ppu.get_tileset_buffer().iter().enumerate() {
+
+        // This should probably be changed into a 1d array
+        let mut buf = [ppu::TilePixelValue::Zero; TILESET_SIZE];
+        let tileset_buffer = cpu.ppu.get_tileset_buffer();
+        for y in 0..TILESET_HEIGHT {
+            for x in 0..TILESET_WIDTH {
+                buf[TILESET_WIDTH*y + x] = tileset_buffer[y][x];
+            }
+        }
+
+        for (i, pixel) in buf.iter().enumerate() {
             tileset_window_buffer[i] = *pixel as u32;
         }
+
         window.update_with_buffer(window_buffer.as_slice(), WIDTH, HEIGHT).unwrap();
         tileset_window.update_with_buffer(tileset_window_buffer.as_slice(), TILESET_WIDTH, TILESET_HEIGHT).unwrap();
     }

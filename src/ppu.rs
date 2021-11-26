@@ -7,7 +7,7 @@ use crate::constants::*;
 // 0 1 => Light gray
 // 1 0 => Dark gray
 // 0 0 => Black
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(u32)]
 pub enum TilePixelValue {
     Zero = 0x00FFFFFF,
@@ -29,24 +29,28 @@ fn empty_tile() -> Tile {
     [[TilePixelValue::Zero; 8]; 8]
 }
 
+type TileSetBuffer = [[TilePixelValue; TILESET_WIDTH]; TILESET_HEIGHT];
+fn empty_tileset_buffer() -> TileSetBuffer {
+    [[TilePixelValue::Zero; TILESET_WIDTH]; TILESET_HEIGHT]
+}
+
 pub struct Ppu {
     pub mem: Rc<RefCell<[u8; 0x10000]>>,
     screen_buffer: Box<[TilePixelValue; BG_SIZE]>,
     tile_set: Vec<Tile>, // 384 tiles in the tileset
-    tile_set_buffer: Box<[TilePixelValue; TILESET_SIZE]>,
+    tile_set_buffer: TileSetBuffer,
     current_row_tiles: Vec<Tile>,
 }
 
 impl Ppu {
     pub fn new(mem_ref: Rc<RefCell<[u8; 0x10000]>>) -> Self {
         let screen_buffer = utils::alloc_boxed_array();
-        let tile_set_buffer = utils::alloc_boxed_array();
 
         Ppu {
             mem: mem_ref,
             screen_buffer: screen_buffer,
             tile_set: vec![empty_tile(); 384],
-            tile_set_buffer: tile_set_buffer,
+            tile_set_buffer: empty_tileset_buffer(),
             current_row_tiles: Vec::new(),
         }
     }
@@ -58,8 +62,6 @@ impl Ppu {
             0x8000..=0x97FF => self.update_tiledata(address),
             _ => {},
         }
-
-        self.update_tiledata_buffer();
     }
 
     // Updates the internal tiledata
@@ -75,8 +77,10 @@ impl Ppu {
 
         // One tile is 8x8 pixels. Every pixel is represented by 2 bits (4 colors).
         // 8*2 = 16bits per row, which is 2 bytes. One tile is 8*2 = 16bytes in size
-        let tile_address = (address - 0x8000) / 16;
-        let row_address = (address % 16) / 2;
+        let tile_index = (address - 0x8000) / 16;
+
+        let tile_row = (address % 16) / 2; // Row of the tile (0-7)
+        let tileset_row = (tile_index / 24) * 8 + tile_row; // Row of the whole tilemap (0-16*8)
 
         // Loop each row
         for pixel_address in 0..8 {
@@ -98,26 +102,9 @@ impl Ppu {
                 (false, false) => TilePixelValue::Zero,
             };
 
-            self.tile_set[tile_address][row_address][pixel_address] = value;
-        }
-    }
-
-    // Updates the internal tiledata rendering buffer
-    fn update_tiledata_buffer(&mut self) {
-        // Do one row at a time
-        for y in 0..TILESET_HEIGHT {
-
-            // Get all tiles belonging to the current row.
-            // This is just grabbing 24 tiles at a time.
-            let grid_row = y / 8;
-            let tile_row = y % 8;
-            let tiles = &self.tile_set[grid_row..grid_row + 8];
-            let mut row_pixels = [TilePixelValue::Zero; TILESET_WIDTH];
-
-            let mut x = 0;
-            for tile in tiles {
-                
-            }
+            let tileset_col = (tile_index % 24) * 8 + pixel_address;
+            self.tile_set_buffer[tileset_row][tileset_col] = value;
+            //self.tile_set[tile_address][row_address][pixel_address] = value;
         }
     }
 
@@ -153,8 +140,8 @@ impl Ppu {
         &self.screen_buffer[0..SCREEN_SIZE]
     }
 
-    pub fn get_tileset_buffer(&self) -> &[TilePixelValue] {
-        &self.tile_set_buffer[0..TILESET_SIZE]
+    pub fn get_tileset_buffer(&self) -> &TileSetBuffer {
+        &self.tile_set_buffer
     }
 
     // Returns the tile at the given index depending on whether the address mode is $8000 or not (set by LDLC bit 4)
