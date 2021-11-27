@@ -68,7 +68,7 @@ impl CPU {
             }
 
             // Pixel transfer
-            self.ppu.pixel_transfer(ly);
+            //self.ppu.pixel_transfer(ly);
             while cycles < 252 {
                 cycles += self.step();
             }
@@ -152,87 +152,6 @@ impl CPU {
         println!("PC: 0x{:0>4X}", self.pc-1);
         println!("---------");
         println!("{}", self.instruction_history.front().unwrap());
-    }
-
-    // Creates and returns a pixel buffer containing what should be drawn on screen
-    fn pixel_buffer(&mut self) -> Vec<u32> {
-        let mut screen: Vec<u32> = Vec::new();
-        screen.resize(WIDTH*HEIGHT, 0x00FFFFFF);
-
-        let ldlc = self.read_byte(0xFF40); // LCD Control
-        let stat = self.read_byte(0xFF41); // LCD Status
-
-        // Have to update modes as we go through the screen
-        //stat = stat &
-
-        // If Bit 7 is not set, LCD is disabled. Return all white
-        if ldlc & 0x80 == 0 {
-            return screen;
-        };
-
-        let mut tile_map: Vec<u32> = Vec::new();
-        tile_map.resize(256*256, 0); // tilemap is 32x32 tiles, each 8x8 pixels
-
-        // This function should not read address mode
-        let tile_set_start = if ldlc & 0x03 == 0 { 0x9800 } else { 0x9C00 };
-        let address_mode = if ldlc & 0x04 == 0 { 0x8000 } else { 0x8800 };
-
-        // Loop through all tiles in BG
-        for y in 0..32 {
-            for x in 0..32 {
-                // Get tile at this position
-                let tile_index = self.read_byte(tile_set_start + 32*y + x);
-                let tile = self.ppu.get_tile(tile_index as u16, address_mode);
-
-                // Map tile into pixel buffer
-                for tile_y in 0..8 {
-                    for tile_x in 0..8 {
-                        tile_map[(256*(y*8 + tile_y) + x*8 + tile_x) as usize] = tile[tile_x as usize][tile_y as usize] as u32;
-                    }
-                }
-            }
-        }
-
-        // Find out where the screen is in the tilemap
-        let scroll_y = 0;//self.read_byte(0xFF42);
-        let scroll_x = 0;//self.read_byte(0xFF43);
-
-        // Crop buffer to screen
-        // TODO add so screen view wraps to other side
-        let mut screen: Vec<u32> = Vec::new();
-        screen.resize(WIDTH*HEIGHT, 0x00FFFFFF);
-
-        for (y, y_offset) in (scroll_y..(scroll_y + HEIGHT as u8)).enumerate() {
-            for (x, x_offset) in (scroll_x..(scroll_x + WIDTH as u8)).enumerate() {
-                let p = tile_map[(y_offset as u32*256 + x_offset as u32) as usize];
-                screen[(y*WIDTH + x) as usize] = p;
-            }
-        }
-
-        screen
-    }
-
-    // Creates and returns a buffer with all tiles in the tileset in all three blocks
-    fn tileset_buffer(&mut self) -> Vec<u32> {
-        let mut tile_set: Vec<u32> = Vec::new();
-        tile_set.resize(384*8*8, 0x00FFFFFF); // tileset is 384 tiles, each 8x8 pixels
-
-        // Loop through tiles in tileset window
-        for x in 0..24 {
-            for y in 0..16 {
-                // Get the tile at this position
-                let tile = self.ppu.get_tile(((x as u32)*((y as u32)+1)) as u16, 0x8000);
-
-                // Map tile to tile_set buffer
-                for tile_y in 0..8 {
-                    for tile_x in 0..8 {
-                        tile_set[((y as u32)*24*64 + tile_y*24*8 + (x as u32)*8 + tile_x) as usize] = tile[tile_x as usize][tile_y as usize] as u32;
-                    }
-                }
-            }
-        }
-
-        tile_set
     }
 
     // Prints the instruction history
@@ -1315,9 +1234,10 @@ const CYCLES_PER_SCREEN: u64 = 70224;
 const FPS: f32 = CLOCK as f32 / CYCLES_PER_SCREEN as f32;
 const MICROS_PER_FRAME: Duration = Duration::from_micros((1000.0 * 1000.0 / FPS) as u64);
 
-fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
-    let mut window_buffer = vec![0; WIDTH * HEIGHT];
-    let mut tileset_window_buffer = vec![0; TILESET_WIDTH * TILESET_HEIGHT];
+fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window, mut background_window: Window) {
+    let mut window_buffer = vec![0; SCREEN_SIZE];
+    let mut tileset_window_buffer = vec![0; TILESET_SIZE];
+    let mut background_window_buffer = vec![0; BG_SIZE];
 
     while window.is_open() && tileset_window.is_open() &&
             !window.is_key_down(Key::Escape) && !tileset_window.is_key_down(Key::Escape) {
@@ -1346,13 +1266,18 @@ fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window) {
                 buf[TILESET_WIDTH*y + x] = tileset_buffer[y][x];
             }
         }
-
         for (i, pixel) in buf.iter().enumerate() {
             tileset_window_buffer[i] = *pixel as u32;
         }
 
+        // Update background buffer
+        for (i, pixel) in cpu.ppu.get_background_buffer().iter().enumerate() {
+            background_window_buffer[i] = *pixel as u32;
+        }
+
         window.update_with_buffer(window_buffer.as_slice(), WIDTH, HEIGHT).unwrap();
         tileset_window.update_with_buffer(tileset_window_buffer.as_slice(), TILESET_WIDTH, TILESET_HEIGHT).unwrap();
+        background_window.update_with_buffer(background_window_buffer.as_slice(), BG_WIDTH, BG_HEIGHT).unwrap();
     }
 }
 
@@ -1377,6 +1302,16 @@ fn main() {
         panic!("{}", e);
     });
 
+    let mut background_window = Window::new(
+        "Background",
+        BG_WIDTH,
+        BG_HEIGHT,
+        WindowOptions::default()
+    )
+    .unwrap_or_else(|e| {
+        panic!("{}", e);
+    });
+
 
     // gameboy framerate is 59.727500569606 Hz
     window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
@@ -1385,5 +1320,5 @@ fn main() {
     let cpu = CPU::with_rom("test/cpu_instrs/individual/06-ld r,r.gb");
     cpu.bus.read_cartridge_header();
 
-    run(cpu, window, tileset_window);
+    run(cpu, window, tileset_window, background_window);
 }
