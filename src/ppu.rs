@@ -38,20 +38,22 @@ pub struct Ppu {
     pub mem: Rc<RefCell<[u8; 0x10000]>>,
 
     // Internal buffers for rendering the tilemap and the background
+    screen_buffer: Box<[TilePixelValue; SCREEN_SIZE]>,
     background_buffer: Box<[TilePixelValue; BG_SIZE]>,
     tileset_buffer: TilesetBuffer,
 
     // Current scanline from oam search
-    current_row_tiles: Vec<Tile>,
+    current_row_tiles: [TilePixelValue; WIDTH],
 }
 
 impl Ppu {
     pub fn new(mem_ref: Rc<RefCell<[u8; 0x10000]>>) -> Self {
         Ppu {
             mem: mem_ref,
+            screen_buffer: utils::alloc_boxed_array(),
             background_buffer: utils::alloc_boxed_array(),
             tileset_buffer: empty_tileset_buffer(),
-            current_row_tiles: Vec::new(),
+            current_row_tiles: [TilePixelValue::Zero; WIDTH],
         }
     }
 
@@ -153,25 +155,63 @@ impl Ppu {
         let ldlc = mem_ref[0xFF40];
         let address_mode = if ldlc & 0x04 == 0 { 0x8000 } else { 0x8800 };
 
+        // Get the scroll of the window
+        let scy = mem_ref[0xFF42];
+        let scx = mem_ref[0xFF43];
+
+        // Add the current scanline to find out which background line to render
+        let y = scy.wrapping_add(ly);
+        //let x = scx;
+
         // Indicies are at memory areas 0x9800 to 0x9bff and 0x9cff to 0x9fff.
         // One backgroud holds 1024 tiles which is one of these ranges.
         // This function only processes one scanline so only a subset is needed.
-        //let range = ly / 
-        //let tile_indicies = &mem_ref[0x9800..0x9BFF];
+        let tilemap_row = 0x9800 + (y / 32) as usize;
+        let tile_indicies = &mem_ref[tilemap_row..tilemap_row+32];
 
+        // Get the memory locations of the tile data
+        let mut tile_data = Vec::new();
+        for tile_index in tile_indicies {
+            let tile_data_location = (*tile_index as u16 * 16 + 0x8000) as usize;
+            tile_data.push(mem_ref[tile_data_location]);
+        }
 
+        // The row in the tile (0-8)
+        let tile_row = tilemap_row % 8;
+
+        // When iterating the tile data we have to take into account
+        // The row of the tile. The first skip is to get to the row on the first tile.
+        let iter = tile_data.as_slice().chunks_exact(2).skip(tile_row).step_by(8).enumerate();
+        for (i, tile_bytes) in iter {
+            let byte1 = tile_bytes[0];
+            let byte2 = tile_bytes[1];
+
+            for pixel_address in 0..8 {
+                let mask = 1 << (7 - pixel_address);
+                let lsb = byte1 & mask;
+                let msb = byte2 & mask;
+
+                let value = match (lsb != 0, msb != 0) {
+                    (true, true) => TilePixelValue::Three,
+                    (false, true) => TilePixelValue::Two,
+                    (true, false) => TilePixelValue::One,
+                    (false, false) => TilePixelValue::Zero,
+                };
+
+                self.current_row_tiles[i*8 + pixel_address] = value;
+            }
+        }
     }
 
     // Uses values from OAM search and puts them onto the screen
     pub fn pixel_transfer(&mut self, ly: u8) {
-        for x in 0..32*8 {
-            let current_tile = self.current_row_tiles[x / 8];
-            self.background_buffer[32 * 8 * ly as usize + x] = current_tile[x % 8][ly as usize % 8];
+        for (x, v) in self.current_row_tiles.iter().enumerate() {
+            self.screen_buffer[WIDTH * ly as usize + x] = *v;
         }
     }
 
     pub fn get_screen_buffer(&self) -> &[TilePixelValue] {
-        &self.background_buffer[0..SCREEN_SIZE]
+        &self.screen_buffer[0..SCREEN_SIZE]
     }
 
     pub fn get_tileset_buffer(&self) -> &TilesetBuffer {

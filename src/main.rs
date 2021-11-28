@@ -68,7 +68,7 @@ impl CPU {
             }
 
             // Pixel transfer
-            //self.ppu.pixel_transfer(ly);
+            self.ppu.pixel_transfer(ly);
             while cycles < 252 {
                 cycles += self.step();
             }
@@ -1317,7 +1317,7 @@ fn main() {
     window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
     tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
-    let cpu = CPU::with_rom("test/cpu_instrs/individual/06-ld r,r.gb");
+    let cpu = CPU::with_rom("test/blarggs/cpu_instrs/individual/06-ld r,r.gb");
     cpu.bus.read_cartridge_header();
 
     run(cpu, window, tileset_window, background_window);
