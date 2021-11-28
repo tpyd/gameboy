@@ -161,27 +161,29 @@ impl Ppu {
 
         // Add the current scanline to find out which background line to render
         let y = scy.wrapping_add(ly);
-        //let x = scx;
+        let x = scx;
 
-        // Indicies are at memory areas 0x9800 to 0x9bff and 0x9cff to 0x9fff.
-        // One backgroud holds 1024 tiles which is one of these ranges.
         // This function only processes one scanline so only a subset is needed.
-        let tilemap_row = 0x9800 + (y / 32) as usize;
-        let tile_indicies = &mem_ref[tilemap_row..tilemap_row+32];
+        // First we have to find out which tiles to get. These two lines will
+        // figure out exactly which row we are on in the background.
+        let tilemap_row = (y / 8) as usize;
+        let tile_row = (y % 8) as usize;
 
-        // Get the memory locations of the tile data
+        // Grab the tile indicies for the current row
+        let tile_index_start = 0x9800 + 32 * tilemap_row;
+        let tile_index_end = 0x9800 + 32 * tilemap_row + 32;
+        let tile_indicies = &mem_ref[tile_index_start..tile_index_end];
+
+        // Get the memory locations for the actual tile data
         let mut tile_data = Vec::new();
         for tile_index in tile_indicies {
             let tile_data_location = (*tile_index as u16 * 16 + 0x8000) as usize;
-            tile_data.push(mem_ref[tile_data_location]);
+            let row_offset = tile_row * 2; // 2 bytes per row
+            tile_data.push(mem_ref[tile_data_location + row_offset]);
         }
 
-        // The row in the tile (0-8)
-        let tile_row = tilemap_row % 8;
-
-        // When iterating the tile data we have to take into account
-        // The row of the tile. The first skip is to get to the row on the first tile.
-        let iter = tile_data.as_slice().chunks_exact(2).skip(tile_row).step_by(8).enumerate();
+        // Only need to process the relevant tile data
+        let iter = tile_data.as_slice().chunks_exact(2).enumerate();
         for (i, tile_bytes) in iter {
             let byte1 = tile_bytes[0];
             let byte2 = tile_bytes[1];
