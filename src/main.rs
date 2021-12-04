@@ -73,13 +73,13 @@ impl CPU {
                 cycles += self.step();
             }
 
-            // H-Blank period
+            // Horizontal blank period
             while cycles < 456 {
                 cycles += self.step();
             }
         }
 
-        // V-Blank period
+        // Vertical blank period
         for ly in 144..154 {
             while cycles < 4560 {
                 cycles += self.step();

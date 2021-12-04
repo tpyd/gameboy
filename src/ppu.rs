@@ -169,17 +169,20 @@ impl Ppu {
         let tilemap_row = (y / 8) as usize;
         let tile_row = (y % 8) as usize;
 
-        // Grab the tile indicies for the current row
+        // Grab the tile indicies for the current row, total of 32 tiles in a row
         let tile_index_start = 0x9800 + 32 * tilemap_row;
         let tile_index_end = 0x9800 + 32 * tilemap_row + 32;
         let tile_indicies = &mem_ref[tile_index_start..tile_index_end];
 
         // Get the memory locations for the actual tile data
         let mut tile_data = Vec::new();
+        let row_offset = tile_row * 2; // 2 bytes per row
         for tile_index in tile_indicies {
             let tile_data_location = (*tile_index as u16 * 16 + 0x8000) as usize;
-            let row_offset = tile_row * 2; // 2 bytes per row
-            tile_data.push(mem_ref[tile_data_location + row_offset]);
+            let byte1 = tile_data_location + row_offset;
+            let byte2 = byte1 + 1;
+            tile_data.push(mem_ref[byte1]);
+            tile_data.push(mem_ref[byte2]);
         }
 
         // Only need to process the relevant tile data
@@ -200,7 +203,11 @@ impl Ppu {
                     (false, false) => TilePixelValue::Zero,
                 };
 
-                self.current_row_tiles[i*8 + pixel_address] = value;
+                let xloc = i*8 + pixel_address;
+                if xloc >= WIDTH {
+                    break;
+                }
+                self.current_row_tiles[xloc] = value;
             }
         }
     }
