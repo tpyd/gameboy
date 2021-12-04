@@ -87,7 +87,7 @@ impl Ppu {
         let tile_indicies = &mem_ref[tile_index_start..tile_index_end];
 
         
-        for (i, tile_index) in tile_indicies.into_iter().enumerate() {
+        for (i, tile_index) in tile_indicies.iter().enumerate() {
             // Get the memory locations for the actual tile data
             let tile_data_location = (*tile_index as u16 * 16 + 0x8000) as usize;
             let byteloc = tile_data_location + row_offset;

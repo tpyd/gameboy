@@ -54,7 +54,7 @@ impl CPU {
     }
 
     // Run the gameboy for 17 556 clocks. Which equals to one screen update.
-    fn run(&mut self, cycles_to_run: u64) {
+    fn run(&mut self) {
         let mut cycles = 0;
 
         // Go through all the lines in the screen
@@ -1244,7 +1244,7 @@ fn run(mut cpu: CPU, mut window: Window, mut tileset_window: Window, mut backgro
 
         // 17 556 clocks (70 224 cycles) per frame. Equals 59.7 Hz refresh rate
         let start_time = Instant::now();
-        cpu.run(CYCLES_PER_SCREEN);
+        cpu.run();
         let finish_time = Instant::now();
         let diff = finish_time - start_time;
 
