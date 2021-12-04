@@ -168,29 +168,22 @@ impl Ppu {
         // figure out exactly which row we are on in the background.
         let tilemap_row = (y / 8) as usize;
         let tile_row = (y % 8) as usize;
+        let row_offset = tile_row * 2; // 2 bytes per row
 
         // Grab the tile indicies for the current row, total of 32 tiles in a row
         let tile_index_start = 0x9800 + 32 * tilemap_row;
         let tile_index_end = 0x9800 + 32 * tilemap_row + 32;
         let tile_indicies = &mem_ref[tile_index_start..tile_index_end];
 
-        // Get the memory locations for the actual tile data
-        let mut tile_data = Vec::new();
-        let row_offset = tile_row * 2; // 2 bytes per row
-        for tile_index in tile_indicies {
+        
+        for (i, tile_index) in tile_indicies.into_iter().enumerate() {
+            // Get the memory locations for the actual tile data
             let tile_data_location = (*tile_index as u16 * 16 + 0x8000) as usize;
-            let byte1 = tile_data_location + row_offset;
-            let byte2 = byte1 + 1;
-            tile_data.push(mem_ref[byte1]);
-            tile_data.push(mem_ref[byte2]);
-        }
+            let byteloc = tile_data_location + row_offset;
+            let byte1 = mem_ref[byteloc];
+            let byte2 = mem_ref[byteloc + 1];
 
-        // Only need to process the relevant tile data
-        let iter = tile_data.as_slice().chunks_exact(2).enumerate();
-        for (i, tile_bytes) in iter {
-            let byte1 = tile_bytes[0];
-            let byte2 = tile_bytes[1];
-
+            // Only process the current row
             for pixel_address in 0..8 {
                 let mask = 1 << (7 - pixel_address);
                 let lsb = byte1 & mask;
