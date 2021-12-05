@@ -16,6 +16,14 @@ mod constants;
 use constants::*;
 
 
+enum Interrupt {
+    VBlank,
+    LCD_STAT,
+    Timer,
+    Serial,
+    Joypad
+}
+
 
 /*
     Implementation of the CPU LR35902
@@ -80,11 +88,13 @@ impl CPU {
         }
 
         // Vertical blank period
+        self.set_interrupt_flag(Interrupt::VBlank);
         for ly in 144..154 {
             while cycles < 4560 {
                 cycles += self.step();
             }
         }
+        self.unset_interrupt_flag(Interrupt::VBlank);
     }
 
     // Executes one CPU cycle. Reads and executes an instruction from the position of the pc and updates the pc
@@ -171,6 +181,40 @@ impl CPU {
         let timer_enabled = (ie >> 2) & 0b1 != 0;
         let serial_enabled = (ie >> 3) & 0b1 != 0;
         let joypad_enabled = (ie >> 4) & 0b1 != 0;
+    }
+
+    // Sets the given interrupt flag in IF
+    fn set_interrupt_flag(&mut self, interrupt_type: Interrupt) {
+        let mut mem_ref = self.bus.base.borrow_mut();
+        let interrupt_flag = &mem_ref[0xff0f];
+
+        let new_if: u8;
+        match interrupt_type {
+            Interrupt::VBlank => new_if = (1 << 0) | interrupt_flag,
+            Interrupt::LCD_STAT => new_if = (1 << 1) | interrupt_flag,
+            Interrupt::Timer => new_if = (1 << 2) | interrupt_flag,
+            Interrupt::Serial => new_if = (1 << 3) | interrupt_flag,
+            Interrupt::Joypad => new_if = (1 << 4) | interrupt_flag,
+        }
+
+        mem_ref[0xff0f] = new_if;
+    }
+
+    // Unsets the given interrupt flag in IF
+    fn unset_interrupt_flag(&mut self, interrupt_type: Interrupt) {
+        let mut mem_ref = self.bus.base.borrow_mut();
+        let interrupt_flag = &mem_ref[0xff0f];
+
+        let new_if: u8;
+        match interrupt_type {
+            Interrupt::VBlank => new_if = !(1 << 0) & interrupt_flag,
+            Interrupt::LCD_STAT => new_if = !(1 << 1) & interrupt_flag,
+            Interrupt::Timer => new_if = !(1 << 2) & interrupt_flag,
+            Interrupt::Serial => new_if = !(1 << 3) & interrupt_flag,
+            Interrupt::Joypad => new_if = !(1 << 4) & interrupt_flag,
+        }
+
+        mem_ref[0xff0f] = new_if;
     }
 
     // Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
