@@ -98,6 +98,7 @@ pub enum LoadType {
 
 #[derive(Debug, Clone, Copy)]
 pub enum RSTVec {
+    // Instruction vectors, called by ROMS
     H00 = 0x00,
     H10 = 0x10,
     H20 = 0x20,
@@ -106,6 +107,12 @@ pub enum RSTVec {
     H18 = 0x18,
     H28 = 0x28,
     H38 = 0x38,
+    // Interrupt vectors, only called internally
+    I40 = 0x40,
+    I48 = 0x48,
+    I50 = 0x50,
+    I58 = 0x58,
+    I60 = 0x60,
 }
 
 impl Instruction {

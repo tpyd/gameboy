@@ -15,15 +15,40 @@ mod utils;
 mod constants;
 use constants::*;
 
-
 enum Interrupt {
     VBlank,
     LCD_STAT,
     Timer,
     Serial,
-    Joypad
+    Joypad,
+    None
 }
 
+impl Interrupt {
+    // Get the first enabled interrupt that in the prioritized order
+    fn get_prioritized_interrupt(byte: u8) -> Self {
+        // Go through all interrupt bits
+        for bit_index in 0..=4 {
+            // Get the first enabled bit
+            let bit_enabled = (byte >> bit_index) & 0b1 != 0;
+            if bit_enabled {
+                // Return the associated interrupt
+                let interrupt = match bit_index {
+                    0 => Interrupt::VBlank,
+                    1 => Interrupt::LCD_STAT,
+                    2 => Interrupt::Timer,
+                    3 => Interrupt::Serial,
+                    4 => Interrupt::Joypad,
+                    _ => Interrupt::None, // Will never be reached
+                };
+
+                return interrupt;
+            }
+        }
+
+        Interrupt::None
+    }
+}
 
 /*
     Implementation of the CPU LR35902
@@ -113,7 +138,7 @@ impl CPU {
             self.instruction_history.truncate(100);
             //self.debug();
 
-            let c = self.execute(instruction);
+            let mut c = self.execute(instruction);
 
             // Enable interrupts if previous instruction call was EI
             if self.ei_called {
@@ -124,17 +149,17 @@ impl CPU {
                 }
             }
 
+            // Handle interrupts
+            if self.ime {
+                c += self.handle_interrupts();
+            }
+
             c
         } else {
             let description = format!("0x{}{:x}", if prefixed { "cb" } else { "" }, instruction_byte);
             self.print_history();
             panic!("Unknown instruction found for: {}", description);
         };
-
-        // Handle interrupts
-        if self.ime {
-            self.handle_interrupts();
-        }
 
         // Read serial port, used to debug with Blargg's test rom
         let serial_transfer_data = self.read_byte(0xFF01);      // SB
@@ -172,18 +197,32 @@ impl CPU {
     }
 
     // Handles interrupts
-    fn handle_interrupts(&self) {
-        // IE contains which iterrupts are enabled
+    fn handle_interrupts(&mut self) -> usize {
+        // IE contains which iterrupts are enabled (set by the ROM)
         let ie = self.read_byte(0xffff);
 
-        let vblank_enabled = (ie & 0b1) != 0;
-        let lcdstat_enabled = (ie >> 1) & 0b1 != 0;
-        let timer_enabled = (ie >> 2) & 0b1 != 0;
-        let serial_enabled = (ie >> 3) & 0b1 != 0;
-        let joypad_enabled = (ie >> 4) & 0b1 != 0;
+        let interrupt = Interrupt::get_prioritized_interrupt(ie);
+
+        let interrupt_vector = match interrupt {
+            Interrupt::VBlank   => RSTVec::I40,
+            Interrupt::LCD_STAT => RSTVec::I48,
+            Interrupt::Timer    => RSTVec::I50,
+            Interrupt::Serial   => RSTVec::I58,
+            Interrupt::Joypad   => RSTVec::I60,
+            _ => return 20,
+        };
+
+        self.di();
+        self.unset_interrupt_flag(interrupt);
+        self.rst(interrupt_vector);
+
+        20 // 5 M-cycles
     }
 
     // Sets the given interrupt flag in IF
+    // This is usually set by the CPU automatically when appropriate 
+    // and when interrupts are enabled. ROMS would normally set the 
+    // IE bits instead to request an interrupt (0xffff).
     fn set_interrupt_flag(&mut self, interrupt_type: Interrupt) {
         let mut mem_ref = self.bus.base.borrow_mut();
         let interrupt_flag = &mem_ref[0xff0f];
@@ -195,6 +234,7 @@ impl CPU {
             Interrupt::Timer => new_if = (1 << 2) | interrupt_flag,
             Interrupt::Serial => new_if = (1 << 3) | interrupt_flag,
             Interrupt::Joypad => new_if = (1 << 4) | interrupt_flag,
+            _ => return,
         }
 
         mem_ref[0xff0f] = new_if;
@@ -212,6 +252,7 @@ impl CPU {
             Interrupt::Timer => new_if = !(1 << 2) & interrupt_flag,
             Interrupt::Serial => new_if = !(1 << 3) & interrupt_flag,
             Interrupt::Joypad => new_if = !(1 << 4) & interrupt_flag,
+            _ => return,
         }
 
         mem_ref[0xff0f] = new_if;
@@ -1354,7 +1395,7 @@ fn main() {
     window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
     tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
-    let cpu = CPU::with_rom("test/blarggs/cpu_instrs/individual/06-ld r,r.gb");
+    let cpu = CPU::with_rom("test/blarggs/cpu_instrs/individual/02-interrupts.gb");
     cpu.bus.read_cartridge_header();
 
     run(cpu, window, tileset_window, background_window);
