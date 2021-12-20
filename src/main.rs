@@ -59,6 +59,7 @@ struct CPU {
     sp: u16, // Stack pointer, points to the top of the stack
     bus: MemoryBus,
     ppu: Ppu,
+    timer_count: u32,
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool, // Interrupt Master Enable
@@ -124,7 +125,7 @@ impl CPU {
 
     // Executes one CPU cycle. Reads and executes an instruction from the position of the pc and updates the pc
     // Returns the number of cycles performed
-    fn step(&mut self) -> u64 {
+    fn step(&mut self) -> u32 {
         let mut instruction_byte = self.read_next_byte();
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
@@ -170,7 +171,10 @@ impl CPU {
             self.write_byte(0xFF02, 0x01);
         }
 
-        cycles as u64
+        self.timer_count += cycles as u32;
+        self.check_timer();
+
+        cycles as u32
     }
 
     // Prints debug information in the console
@@ -256,6 +260,22 @@ impl CPU {
         }
 
         mem_ref[0xff0f] = new_if;
+    }
+
+    // Increments the timer register div - divider register if neccessary
+    fn check_timer(&mut self) {
+        if self.timer_count >= 16384 {
+            let mut mem_ref = self.bus.base.borrow_mut();
+            let timer = mem_ref[0xff04];
+            mem_ref[0xff04] = timer.wrapping_add(1);
+        }
+        self.timer_count = self.timer_count % 16384;
+    }
+
+    // Resets the timer register div - divider register
+    fn reset_div(&mut self) {
+        let mut mem_ref = self.bus.base.borrow_mut();
+        mem_ref[0xff04] = 0;
     }
 
     // Executes a given instruction on the CPU. Every instruction execution controls pc movement by itself.
@@ -1262,7 +1282,7 @@ impl CPU {
      * Enters CPU very low power mode.
      */
     fn stop(&mut self) -> usize{
-        // TODO find out if this does anything at all
+        self.reset_div();
 
         4
     }
@@ -1291,8 +1311,14 @@ impl CPU {
     // Write value to memory
     fn write_byte(&mut self, address: u16, value: u8) {
         let address = address as usize;
-        self.bus.write_byte(address, value);
-        self.ppu.update(address);
+        match address {
+            // Writing to divider register resets it
+            0xff04 => self.reset_div(),
+            _ => {
+                self.bus.write_byte(address, value);
+                self.ppu.update(address);
+            },
+        }
     }
 }
 
@@ -1306,6 +1332,7 @@ impl Default for CPU {
             sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
             bus: mem,
             ppu: ppu,
+            timer_count: 0,
             ei_called: false,
             is_halted: false,
             ime: true,
@@ -1394,6 +1421,7 @@ fn main() {
     // gameboy framerate is 59.727500569606 Hz
     window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
     tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
+    background_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
     let cpu = CPU::with_rom("test/blarggs/cpu_instrs/individual/02-interrupts.gb");
     cpu.bus.read_cartridge_header();
