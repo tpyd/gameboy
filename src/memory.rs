@@ -113,6 +113,7 @@ impl MemoryBus {
         match address {
             0x0000..=0x1FFF => {},
             0x2000..=0x3FFF => {
+                #[allow(clippy::single_match)] // Remove this later
                 match self.mbc_type {
                     MBCType::MBC1 => {
                         let mut bank_number = value & 0x1F;

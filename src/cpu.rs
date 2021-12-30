@@ -226,7 +226,7 @@ impl Cpu {
             let timer = mem_ref[0xff04];
             let new_val = timer.wrapping_add(1);
             mem_ref[0xff04] = new_val;
-            self.div_timer = self.div_timer % 16384;
+            self.div_timer %= 16384;
         }
 
         // Update tima timer
@@ -258,7 +258,7 @@ impl Cpu {
                 }
                 
                 // Reset internal timer
-                self.tima_timer = self.tima_timer % clock_inc;
+                self.tima_timer %= clock_inc;
             }
         }
     }
