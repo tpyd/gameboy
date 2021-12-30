@@ -17,7 +17,8 @@ pub struct Cpu {
     sp: u16, // Stack pointer, points to the top of the stack
     pub bus: MemoryBus,
     pub ppu: Ppu,
-    timer_count: u32,
+    div_timer: u32,
+    tima_timer: u32,
     ei_called: bool, // Whether to enable interrupt after instruction
     is_halted: bool,
     ime: bool, // Interrupt Master Enable
@@ -123,8 +124,7 @@ impl Cpu {
             self.write_byte(0xFF02, 0x01);
         }
 
-        self.timer_count += cycles as u32;
-        self.check_timer();
+        self.update_timers(cycles);
 
         cycles as u32
     }
@@ -172,7 +172,7 @@ impl Cpu {
         self.unset_interrupt_flag(interrupt);
         self.rst(interrupt_vector);
 
-        20 // 5 M-cycles
+        20 // 5 M-cycles, includes rst call
     }
 
     // Sets the given interrupt flag in IF
@@ -215,13 +215,52 @@ impl Cpu {
     }
 
     // Increments the timer register div - divider register if neccessary
-    fn check_timer(&mut self) {
-        if self.timer_count >= 16384 {
-            let mut mem_ref = self.bus.base.borrow_mut();
+    fn update_timers(&mut self, cycles: usize) {
+        self.div_timer += cycles as u32;
+        self.tima_timer += cycles as u32;
+
+        let mut mem_ref = self.bus.base.borrow_mut();
+
+        // Update div timer
+        if self.div_timer >= 16384 {
             let timer = mem_ref[0xff04];
-            mem_ref[0xff04] = timer.wrapping_add(1);
+            let new_val = timer.wrapping_add(1);
+            mem_ref[0xff04] = new_val;
+            self.div_timer = self.div_timer % 16384;
         }
-        self.timer_count = self.timer_count % 16384;
+
+        // Update tima timer
+        let tac = mem_ref[0xff07];
+        let timer_enable = (1 << 2) & tac != 0;
+        if timer_enable {
+            let bit1 = (1 << 0) & tac != 0;
+            let bit0 = (1 << 1) & tac != 0;
+            let clock_inc = match (bit1, bit0) {
+                (false, false) => 4096,   // Cpu clock / 1024
+                (false, true) => 262144, // Cpu clock / 16
+                (true, false) => 65536,  // Cpu clock / 64
+                (true, true) => 16384,  // Cpu clock / 256
+            };
+
+            let tma = mem_ref[0xff06];
+            
+            // Check if increment is needed
+            if self.tima_timer >= clock_inc {
+                let timer = mem_ref[0xff05];
+                let (new_val, overflow) = timer.overflowing_add(1);
+                if overflow {
+                    // Set register to TMA register and request interrupt
+                    mem_ref[0xff05] = tma;
+                    drop(mem_ref); // Need to drop memory reference since its immutable apparently
+                    self.set_interrupt_flag(Interrupt::Timer);
+                } else {
+                    mem_ref[0xff05] = new_val;
+                }
+                
+                // Reset internal timer
+                self.tima_timer = self.tima_timer % clock_inc;
+            }
+        }
     }
 
     // Resets the timer register div - divider register
@@ -1284,7 +1323,8 @@ impl Default for Cpu {
             sp: 0xFFFE, // See https://gbdev.io/pandocs/#power-up-sequence
             bus: mem,
             ppu: ppu,
-            timer_count: 0,
+            div_timer: 0,
+            tima_timer: 0,
             ei_called: false,
             is_halted: false,
             ime: true,

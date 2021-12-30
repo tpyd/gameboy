@@ -14,7 +14,6 @@ use cpu::Cpu;
 
 use constant::*;
 
-
 const CLOCK: u64 = 4194304;
 const CYCLES_PER_SCREEN: u64 = 70224;
 const FPS: f32 = CLOCK as f32 / CYCLES_PER_SCREEN as f32;
