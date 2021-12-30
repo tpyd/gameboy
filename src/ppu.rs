@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
+use crate::constant::*;
 use crate::utils;
-use crate::constants::*;
 
 // The four different color values of a pixel
 // 1 1 => White
@@ -63,16 +63,16 @@ impl Ppu {
     pub fn oam_search(&mut self, ly: u8) {
         let mem_ref = self.mem.borrow();
 
-        let ldlc = mem_ref[0xFF40];
-        let address_mode = if ldlc & 0x04 == 0 { 0x8000 } else { 0x8800 };
+        //let ldlc = mem_ref[0xFF40];
+        //let address_mode = if ldlc & 0x04 == 0 { 0x8000 } else { 0x8800 };
 
         // Get the scroll of the window
         let scy = mem_ref[0xFF42];
-        let scx = mem_ref[0xFF43];
+        //let scx = mem_ref[0xFF43];
 
         // Add the current scanline to find out which background line to render
         let y = scy.wrapping_add(ly);
-        let x = scx;
+        //let x = scx;
 
         // This function only processes one scanline so only a subset is needed.
         // First we have to find out which tiles to get. These two lines will
