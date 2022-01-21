@@ -9,13 +9,15 @@ pub enum Interrupt {
 }
 
 impl Interrupt {
-    // Get the first enabled interrupt that in the prioritized order
-    pub fn get_prioritized_interrupt(byte: u8) -> Self {
+    /// Return the first requested interrupt that is also enabled.
+    pub fn get_prioritized_interrupt(requested_interrupts: u8, enabled_mask: u8) -> Self {
         // Go through all interrupt bits
         for bit_index in 0..=4 {
             // Get the first enabled bit
-            let bit_enabled = (byte >> bit_index) & 0b1 != 0;
-            if bit_enabled {
+            let bit_requested = (requested_interrupts >> bit_index) & 0b1 != 0;
+            let bit_enabled = (enabled_mask >> bit_index) & 0b1 != 0;
+
+            if bit_requested && bit_enabled {
                 // Return the associated interrupt
                 let interrupt = match bit_index {
                     0 => Interrupt::VBlank,
@@ -32,4 +34,5 @@ impl Interrupt {
 
         Interrupt::None
     }
+
 }

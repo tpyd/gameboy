@@ -155,9 +155,10 @@ impl Cpu {
     // Handles interrupts
     fn handle_interrupts(&mut self) -> usize {
         // IE contains which iterrupts are enabled (set by the ROM)
-        let ie = self.read_byte(0xffff);
+        let interrupt_enable = self.read_byte(0xffff);
+        let interrupt_flag = self.read_byte(0xff0f);
 
-        let interrupt = Interrupt::get_prioritized_interrupt(ie);
+        let interrupt = Interrupt::get_prioritized_interrupt(interrupt_flag, interrupt_enable);
 
         let interrupt_vector = match interrupt {
             Interrupt::VBlank   => RSTVec::I40,
@@ -176,8 +177,8 @@ impl Cpu {
     }
 
     // Sets the given interrupt flag in IF
-    // This is usually set by the CPU automatically when appropriate 
-    // and when interrupts are enabled. ROMS would normally set the 
+    // This is usually set by the CPU automatically when appropriate
+    // and when interrupts are enabled. ROMS would normally set the
     // IE bits instead to request an interrupt (0xffff).
     fn set_interrupt_flag(&mut self, interrupt_type: Interrupt) {
         let mut mem_ref = self.bus.base.borrow_mut();
@@ -243,7 +244,7 @@ impl Cpu {
             };
 
             let tma = mem_ref[0xff06];
-            
+
             // Check if increment is needed
             if self.tima_timer >= clock_inc {
                 let timer = mem_ref[0xff05];
@@ -256,7 +257,7 @@ impl Cpu {
                 } else {
                     mem_ref[0xff05] = new_val;
                 }
-                
+
                 // Reset internal timer
                 self.tima_timer %= clock_inc;
             }
