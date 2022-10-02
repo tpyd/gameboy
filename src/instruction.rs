@@ -1,3 +1,5 @@
+use core::fmt;
+
 /*
     All CPU instructions for LR35902
 */
@@ -701,4 +703,12 @@ impl Instruction {
         }
     }
 
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            _ => write!(f, "test"),
+        }
+    }
 }

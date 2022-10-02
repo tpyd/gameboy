@@ -7,6 +7,7 @@ use crate::memory::MemoryBus;
 use crate::ppu::Ppu;
 use crate::interrupt::Interrupt;
 use crate::instruction::*;
+use crate::debug::Debugger;
 
 /*
     Implementation of the CPU LR35902
@@ -23,6 +24,7 @@ pub struct Cpu {
     is_halted: bool,
     ime: bool, // Interrupt Master Enable
     instruction_history: VecDeque<String>,
+    debugger: Debugger,
 }
 
 impl Cpu {
@@ -36,6 +38,7 @@ impl Cpu {
         Cpu {
             bus: memory_bus,
             ppu: ppu,
+            debugger: Debugger::new(&path),
             ..Default::default()
         }
     }
@@ -1330,6 +1333,7 @@ impl Default for Cpu {
             is_halted: false,
             ime: true,
             instruction_history: VecDeque::new(),
+            debugger: Debugger::new(Path::new("TEMP_VALUE")),
         }
     }
 }
