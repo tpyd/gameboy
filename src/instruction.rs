@@ -1,4 +1,5 @@
 use core::fmt;
+use std::fmt::Display;
 
 /*
     All CPU instructions for LR35902
@@ -709,18 +710,39 @@ impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Instruction::LD(loadtype) => {
-                write!(f, "LD {}", loadtype.to_string())?;
+                write!(f, "LD    {}", loadtype.to_string())?;
                 Ok(())
             },
+            &Instruction::INC(arithmetic_type) => {
+                write!(f, "INC    {}", arithmetic_type.to_string())?;
+                Ok(())
+            }
             _ => write!(f, "test"),
         }
     }
 }
 
-impl fmt::Display for LoadType {
+impl Display for LoadType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             _ => write!(f, "test"),
+        }
+    }
+}
+
+impl Display for ArithmeticType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ArithmeticType::Byte(byte_target) => {
+                match byte_target {
+                    ByteTarget::A => {
+                        write!(f, "A")?;
+                        Ok(())
+                    },
+                    _ => Ok(()),
+                }
+            },
+            _ => Ok(()),
         }
     }
 }
