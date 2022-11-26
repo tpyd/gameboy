@@ -708,6 +708,18 @@ impl Instruction {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Instruction::LD(loadtype) => {
+                write!(f, "LD {}", loadtype.to_string())?;
+                Ok(())
+            },
+            _ => write!(f, "test"),
+        }
+    }
+}
+
+impl fmt::Display for LoadType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
             _ => write!(f, "test"),
         }
     }

@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::{fmt, fs};
 use std::path::Path;
 
@@ -30,6 +31,22 @@ impl TableRow {
     }
 }
 
+impl Display for TableRow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut display = format!("{:#06X}    {:#04X}", self.location, self.raw);
+
+        if let Some(instruction) = &self.instruction {
+            display = format!("{}    {}", display, instruction);
+        }
+
+        if let Some(comment) = &self.comment {
+            display = format!("{}    {}", display, comment);
+        }
+
+        write!(f, "{}", display)
+    }
+}
+
 pub struct Debugger {
     table: Vec<TableRow>,
 }
@@ -49,6 +66,7 @@ impl Debugger {
                 prefixed = true;
                 table_row.set_comment("prefix".into());
             } else {
+                prefixed = false;
                 match Instruction::from_byte(*b, prefixed) {
                     Some(instruction) => table_row.set_instruction(instruction.to_string()),
                     None => {},
@@ -56,6 +74,10 @@ impl Debugger {
             }
 
             table.push(table_row);
+        }
+
+        for i in 0..100 {
+            println!("{}", table[i]);
         }
 
         Debugger { 

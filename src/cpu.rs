@@ -32,13 +32,14 @@ impl Cpu {
         let path = Path::new(rom_path);
 
         // Have to recreate Ppu as well to recreate memory reference properly
-        let memory_bus = MemoryBus::new(Some(path));
+        let memory_bus = MemoryBus::new(Some(&path));
         let ppu = Ppu::new(memory_bus.get_mem_ref());
+        let debugger = Debugger::new(&path);
 
         Cpu {
             bus: memory_bus,
             ppu: ppu,
-            debugger: Debugger::new(&path),
+            debugger: debugger,
             ..Default::default()
         }
     }
