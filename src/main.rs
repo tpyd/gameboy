@@ -5,6 +5,7 @@ use std::fs;
 
 mod instruction;
 use instruction::*;
+mod utils;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -273,10 +274,13 @@ impl MemoryBus {
         }
 
         // Load ROM into memory (test rom for now)
-        let rom = fs::read("test/cpu_instrs/individual/10-bit ops.gb").unwrap();
+        let rom = fs::read("test/cpu_instrs/cpu_instrs.gb").unwrap();
         for (i, byte) in rom.iter().enumerate() {
-            mem.write_byte(256 + i as u16, *byte);
+            if i > 65500 { break } // TEMP REMOVETHIS
+            mem.write_byte(i as u16, *byte);
         }
+
+        read_cartridge_header(&mem.memory);
 
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
         // Memory defaults to 0 so some entries are removed
@@ -324,6 +328,33 @@ impl MemoryBus {
             _ => self.memory[address as usize] = value,
         };
     }
+}
+
+/**
+ * Reads cartridge header data and prints it
+ */
+fn read_cartridge_header(memory: &[u8]) {
+    // Title
+    let title_slice = &memory[0x134..=0x143];
+    print!("Title: ");
+    for c in title_slice {
+        print!("{}", *c as char);
+    }
+    println!();
+
+    // Licensee code
+    let licensee_code = &memory[0x144..=0x145];
+    let code = licensee_code[0] << 1 + licensee_code[1];
+    println!("Publisher: {}", utils::get_licensee_name(code));
+
+    // Cartridge type
+    let cartridge_type = &memory[0x147];
+    println!("Cartridge type: {}", utils::get_cartridge_type(*cartridge_type));
+
+    // ROM size
+    let rom_size = *&memory[0x148];
+    let postfix = if rom_size < 0x5 {"KiB"} else {"MiB"};
+    println!("ROM size: {} {}", 32 << rom_size, postfix);
 }
 
 /*
