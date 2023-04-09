@@ -24,7 +24,7 @@ pub struct Cpu {
     is_halted: bool,
     ime: bool, // Interrupt Master Enable
     instruction_history: VecDeque<String>,
-    debugger: Debugger,
+    // debugger: Debugger,
 }
 
 impl Cpu {
@@ -39,7 +39,7 @@ impl Cpu {
         Cpu {
             bus: memory_bus,
             ppu: ppu,
-            debugger: debugger,
+            // debugger: debugger,
             ..Default::default()
         }
     }
@@ -1334,7 +1334,7 @@ impl Default for Cpu {
             is_halted: false,
             ime: true,
             instruction_history: VecDeque::new(),
-            debugger: Debugger::new(Path::new("TEMP_VALUE")),
+            // debugger: Debugger::new(Path::new("TEMP_VALUE")),
         }
     }
 }
