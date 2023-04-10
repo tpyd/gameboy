@@ -222,7 +222,7 @@ impl Cpu {
     // Increments the timer register div - divider register if neccessary
     fn update_timers(&mut self, cycles: usize) {
         self.div_timer += cycles as u32;
-        self.tima_timer += cycles as u32;
+        self.tima_timer += cycles as u32;  // TODO undefined overflow
 
         let mut mem_ref = self.bus.base.borrow_mut();
 

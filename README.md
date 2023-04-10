@@ -12,7 +12,7 @@ There are the tests that the emulator successfully passes.
 | --                    | --   |
 | 01-special            | ❌ |
 | 02-interrupts         | ❌ |
-| 03-op sp,hl           | Needs to run for longer |
+| 03-op sp,hl           | Does not end |
 | 04-op r,imm           | ✔ |
 | 05-op rp              | ✔ |
 | 06-ld r,r             | ✔ |
