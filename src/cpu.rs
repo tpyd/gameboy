@@ -166,7 +166,7 @@ impl Cpu {
 
         let interrupt_vector = match interrupt {
             Interrupt::VBlank   => RSTVec::I40,
-            Interrupt::LcdStat => RSTVec::I48,
+            Interrupt::LcdStat  => RSTVec::I48,
             Interrupt::Timer    => RSTVec::I50,
             Interrupt::Serial   => RSTVec::I58,
             Interrupt::Joypad   => RSTVec::I60,
@@ -456,7 +456,7 @@ impl Cpu {
         Increments target register by 1
     */
     fn inc(&mut self, target: ArithmeticType) -> usize {
-        let cycles = 4;
+        let mut cycles = 4;
         match target {
             ArithmeticType::Byte(byte_target) => {
                 let new_value = match byte_target {
@@ -468,6 +468,7 @@ impl Cpu {
                     ByteTarget::H => { self.registers.h = self.registers.h.wrapping_add(1); self.registers.h },
                     ByteTarget::L => { self.registers.l = self.registers.l.wrapping_add(1); self.registers.l },
                     ByteTarget::HLI => {
+                        cycles = 12;
                         let value = self.read_byte(self.registers.get_hl()).wrapping_add(1);
                         self.write_byte(self.registers.get_hl(), value);
                         value
@@ -480,6 +481,7 @@ impl Cpu {
                 self.registers.f.half_carry = (new_value.wrapping_sub(1) & 0x0F) == 0x0F;
             },
             ArithmeticType::Word(word_target) => {
+                cycles = 8;
                 match word_target {
                     WordTarget::BC => self.registers.set_bc(self.registers.get_bc().wrapping_add(1)),
                     WordTarget::DE => self.registers.set_de(self.registers.get_de().wrapping_add(1)),
@@ -498,7 +500,7 @@ impl Cpu {
         Decrements target register by 1
     */
     fn dec(&mut self, target: ArithmeticType) -> usize {
-        let cycles = 4;
+        let mut cycles = 4;
         match target {
             ArithmeticType::Byte(byte_target) => {
                 let new_value = match byte_target {
@@ -510,6 +512,7 @@ impl Cpu {
                     ByteTarget::H => { self.registers.h = self.registers.h.wrapping_sub(1); self.registers.h },
                     ByteTarget::L => { self.registers.l = self.registers.l.wrapping_sub(1); self.registers.l },
                     ByteTarget::HLI => {
+                        cycles = 12;
                         let value = self.read_byte(self.registers.get_hl()).wrapping_sub(1);
                         self.write_byte(self.registers.get_hl(), value);
                         value
@@ -522,6 +525,7 @@ impl Cpu {
                 self.registers.f.half_carry = (new_value.wrapping_add(1) & 0x0F) == 0;
             },
             ArithmeticType::Word(word_target) => {
+                cycles = 8;
                 match word_target {
                     WordTarget::BC => self.registers.set_bc(self.registers.get_bc().wrapping_sub(1)),
                     WordTarget::DE => self.registers.set_de(self.registers.get_de().wrapping_sub(1)),
@@ -1258,6 +1262,8 @@ impl Cpu {
      * Disables interrupt by clearing IME flag.
      */
     fn di(&mut self) -> usize {
+        // EI followed by DI will not allow for any interrupts between them.
+        self.ei_called = false;
         self.ime = false;
 
         4
