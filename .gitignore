@@ -1,4 +1,4 @@
 /target
-.vscode
-bgb
+.vscode/
 Cargo.lock
+*.txt

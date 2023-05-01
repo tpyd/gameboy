@@ -106,6 +106,11 @@ impl MemoryBus {
     }
 
     pub fn read_byte(&self, address: usize) -> u8 {
+        // Gameboy doctor setup
+        if address == 0xff44 {
+            return 0x90
+        }
+
         self.base.borrow()[address]
     }
 

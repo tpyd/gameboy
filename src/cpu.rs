@@ -25,6 +25,7 @@ pub struct Cpu {
     ime: bool, // Interrupt Master Enable
     instruction_history: VecDeque<String>,
     // debugger: Debugger,
+    file: std::fs::File,
 }
 
 impl Cpu {
@@ -129,8 +130,24 @@ impl Cpu {
         }
 
         self.update_timers(cycles);
+        self.log_state();
 
         cycles as u32
+    }
+
+    pub fn log_state(&mut self) {
+        let pcmem1 = self.bus.read_byte(self.pc as usize);
+        let pcmem2 = self.bus.read_byte((self.pc+1) as usize);
+        let pcmem3 = self.bus.read_byte((self.pc+2) as usize);
+        let pcmem4 = self.bus.read_byte((self.pc+3) as usize);
+
+        let string = format!(
+            "A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}",
+            self.registers.a, u8::from(self.registers.f), self.registers.b, self.registers.c, self.registers.d, self.registers.e, self.registers.h, self.registers.l,
+            self.sp, self.pc, pcmem1, pcmem2, pcmem3, pcmem4
+        );
+
+        writeln!(self.file, "{}", string).unwrap();
     }
 
     // Prints debug information in the console
@@ -1328,6 +1345,10 @@ impl Default for Cpu {
     fn default() -> Self {
         let mem = MemoryBus::new(None);
         let ppu = Ppu::new(mem.get_mem_ref());
+
+        let file = std::fs::File::create("log.txt")
+            .unwrap();
+
         Cpu {
             registers: Registers::new(),
             pc: 0x0100,
@@ -1341,6 +1362,7 @@ impl Default for Cpu {
             ime: true,
             instruction_history: VecDeque::new(),
             // debugger: Debugger::new(Path::new("TEMP_VALUE")),
+            file: file,
         }
     }
 }

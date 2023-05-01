@@ -56,7 +56,7 @@ impl std::convert::From<u8> for FlagsRegister {
     All registers are set using 16-bit values in combinations 'af', 'bc', 'de' and 'hl'
 */
 pub struct Registers {
-    pub a: u8, // TODO make fields private 
+    pub a: u8, // TODO make fields private
     pub b: u8,
     pub c: u8,
     pub d: u8,

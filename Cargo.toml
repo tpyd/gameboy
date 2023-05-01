@@ -7,5 +7,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Replace minifb with pixels in the future for better graphics customization.
 minifb = "0.24.0"
 #pixels = "0.12.0"
