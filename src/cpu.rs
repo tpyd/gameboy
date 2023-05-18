@@ -601,7 +601,9 @@ impl Cpu {
             ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
         };
 
-        self.registers.f.zero = (self.registers.a ^ source_value) == 0;
+        self.registers.a ^= source_value;
+
+        self.registers.f.zero = self.registers.a == 0;
         self.registers.f.subtract = false;
         self.registers.f.carry = false;
         self.registers.f.half_carry = false;
@@ -1096,15 +1098,7 @@ impl Cpu {
     fn pop(&mut self, target: StackTarget) -> usize {
         let value = self.pop_value();
         match target {
-            StackTarget::AF => {
-                self.registers.set_af(value);
-
-                // AF sets flags for some reason
-                self.registers.f.zero = value & 0x80 != 0;
-                self.registers.f.subtract = value & 0x40 != 0;
-                self.registers.f.carry = value & 0x20 != 0;
-                self.registers.f.half_carry = value & 0x10 != 0;
-            }
+            StackTarget::AF => self.registers.set_af(value),
             StackTarget::BC => self.registers.set_bc(value),
             StackTarget::DE => self.registers.set_de(value),
             StackTarget::HL => self.registers.set_hl(value),
