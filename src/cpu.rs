@@ -358,7 +358,7 @@ impl Cpu {
         Reads the current value from target (register or memory value). Adds the
         value to register A or HL depending on instruction overflowing if necessary.
     */
-    fn add(&mut self, target: ArithmeticType, carry: bool) -> usize {
+    fn add(&mut self, target: ArithmeticType, add_carry: bool) -> usize {
         let mut cycles = 4; // Default number of cycles for ADD instruction
         match target {
             ArithmeticType::Byte(byte_target) => {
@@ -373,23 +373,25 @@ impl Cpu {
                     ByteTarget::D8 => { cycles = 8; self.read_next_byte() },
                     ByteTarget::HLI => { cycles = 8; self.read_byte(self.registers.get_hl()) },
                 };
-                let (mut new_value, mut did_overflow) = self.registers.a.overflowing_add(source_value);
-                let mut half_carry = (((self.registers.a & 0xf) + (source_value & 0xf)) & 0x10) == 0x10;
 
-                // Handle ADC
-                if carry {
-                    let (adc_value, adc_overflow) = new_value.overflowing_add(self.registers.f.carry as u8);
-                    new_value = adc_value;
-                    did_overflow |= adc_overflow;
-                    half_carry |= (((new_value & 0xf) + (adc_value & 0xf)) & 0x10) == 0x10;
+                let (mut new_value, mut add_overflow) = self.registers.a.overflowing_add(source_value);
+ 
+                if add_carry {
+                    let (new_adc_value, adc_overflow) = new_value.overflowing_add(self.registers.f.carry as u8);
+                    
+                    new_value = new_adc_value;
+                    add_overflow |= adc_overflow;
                 }
-
+                
                 // Half carry is set if bit 3 overflows
+                let half_carry = (((self.registers.a & 0xf) + (source_value & 0xf) + ((add_carry & self.registers.f.carry) as u8)) & 0x10) == 0x10;
+                
+                self.registers.a = new_value;
+
                 self.registers.f.zero = new_value == 0;
-                self.registers.f.carry = did_overflow;
+                self.registers.f.carry = add_overflow;
                 self.registers.f.half_carry = half_carry;
 
-                self.registers.a = new_value;
 
             },
             ArithmeticType::Word(word_target) => {
@@ -401,7 +403,7 @@ impl Cpu {
                     WordTarget::HL => { value = self.registers.get_hl() },
                     WordTarget::SP => { value = self.registers.get_af() },
                 }
-                if carry { value += self.registers.f.carry as u16; }
+                if add_carry { value += self.registers.f.carry as u16; }
                 let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
 
                 // Half-carry is set if bit 11 overflows
@@ -413,7 +415,7 @@ impl Cpu {
             ArithmeticType::SP => {
                 cycles = 16;
                 let mut value = self.read_next_byte() as i8 as u16;
-                if carry { value += self.registers.f.carry as u16; }
+                if add_carry { value += self.registers.f.carry as u16; }
                 let (new_value, _) = self.sp.overflowing_add(value);
 
                 // Instruction sets carry bit if overflow occured on bit 7, thus did_overflow can't be used here
