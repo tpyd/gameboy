@@ -719,7 +719,7 @@ impl Cpu {
             _ => {},
         }
 
-        self.registers.f.zero = source_value == 0;
+        self.registers.f.zero = if carry { false } else { source_value == 0 };
         self.registers.f.subtract = false;
         self.registers.f.carry = c != 0;
         self.registers.f.half_carry = false;
