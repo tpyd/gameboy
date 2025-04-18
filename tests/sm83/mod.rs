@@ -5,7 +5,6 @@ use gameboy::cpu::Cpu;
 
 #[derive(Deserialize)]
 struct Test {
-    name: String,
     initial: State,
     r#final: State
 }
@@ -25,9 +24,8 @@ struct State {
     ram: Vec<Vec<u16>>,
 }
 
-#[test]
-fn test_noop() {
-    let file = File::open("tests/sm83/data/00.json").unwrap();
+fn test_instruction(file: &str) {
+    let file = File::open(file).unwrap();
     let tests: Vec<Test> = serde_json::from_reader(file).unwrap();
 
     for test in tests {
@@ -82,4 +80,16 @@ fn verify(cpu: &Cpu, test: &Test) {
         assert_eq!(ram_value, value)
     }
 }
+
+macro_rules! generate_tests {
+    ($name:ident, $file:literal) => {
+        #[test]
+        fn $name() {
+            test_instruction($file);
+        }
+    };
+}
+
+generate_tests!(noop, "tests/sm83/data/00.json");
+generate_tests!(ld_bc_u16, "tests/sm83/data/01.json");
 
