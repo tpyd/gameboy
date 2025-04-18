@@ -1,9 +1,9 @@
 use crate::types::*;
-use std::{fmt, fmt::Display}; // TODO dont use fmt::Display and Display
+use std::fmt;
 
 
 impl fmt::Display for Instruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Instruction::LD(loadtype) => {
                 write!(f, "LD   {}", loadtype.to_string())?;
@@ -20,15 +20,15 @@ impl fmt::Display for Instruction {
     }
 }
 
-impl Display for LoadType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LoadType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             _ => write!(f, "test"),
         }
     }
 }
 
-impl Display for ArithmeticType {
+impl fmt::Display for ArithmeticType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ArithmeticType::Byte(byte_target) => write!(f, "{}", byte_target),
@@ -39,7 +39,7 @@ impl Display for ArithmeticType {
 }
 
 
-impl Display for ByteTarget {
+impl fmt::Display for ByteTarget {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ByteTarget::A => write!(f, "A"),
@@ -55,7 +55,7 @@ impl Display for ByteTarget {
     }
 }
 
-impl Display for WordTarget {
+impl fmt::Display for WordTarget {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             WordTarget::BC => write!(f, "BC"),
@@ -66,7 +66,7 @@ impl Display for WordTarget {
     }
 }
 
-impl Display for JumpType {
+impl fmt::Display for JumpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JumpType::Word(jump_condition) => write!(f, "{}", jump_condition),
@@ -75,7 +75,7 @@ impl Display for JumpType {
     }
 }
 
-impl Display for JumpCondition {
+impl fmt::Display for JumpCondition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JumpCondition::NotZero => write!(f, "NZ"),

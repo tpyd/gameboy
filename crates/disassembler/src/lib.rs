@@ -1,4 +1,5 @@
 use std::fs;
+use instructions::Instruction;
 
 #[derive(Debug)]
 struct LineOfCode {
@@ -32,13 +33,35 @@ pub fn disassemble() {
         .collect();
 
     // Start iterating over code
-    let mut pc = 0x0100;
     let mut stack: Vec<u16> = Vec::new();
+    stack.push(0x0100);
 
-    for _ in 0..10 {
-        let line = &mut lines_of_code[pc];
-        let instruction_string = instruction_lookup(&line.instruction_byte);
-        line.instruction_string = instruction_string;
+    while !stack.is_empty() {
+        let mut pc = stack.pop().unwrap() as usize;
+        let mut line = &mut lines_of_code[pc];
+
+        // Stop the current iteration
+        if line.disassembled {
+            continue;
+        }
+
+        // Handle prefixed instructions
+        let mut prefixed = false;
+        if line == 0xCB {
+            prefix = true;
+            
+        }
+
+        let instr_byte = line.instruction_byte;
+        let instr = instructions::Instruction::from_byte(instr_byte, prefixed).unwrap();
+
+        // If we have a jump instruction we branch the iteration
+        if let Instruction::JP(target) = instr {
+            
+        }
+
+        
+        line.instruction_string = Some(instruction_string);
 
         dbg!(&line);
 
@@ -46,11 +69,7 @@ pub fn disassemble() {
     }
 }
 
-fn instruction_lookup(byte: &u8) -> Option<String> {
-    match byte {
-        0xc2 | 0xd2 | 0xc3 | 0xca | 0xda => Some(String::from("JP")),
-        _ => None
-    }
+fn instruction_lookup(byte: &u8) -> Option<Instruction> {
 }
 
 #[cfg(test)]

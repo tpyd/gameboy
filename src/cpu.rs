@@ -13,9 +13,9 @@ use crate::debug::Debugger;
     Implementation of the CPU LR35902
 */
 pub struct Cpu {
-    registers: Registers,
-    pc: u16, // Program counter, tells which instruction its currently running
-    sp: u16, // Stack pointer, points to the top of the stack
+    pub registers: Registers,
+    pub pc: u16, // Program counter, tells which instruction its currently running
+    pub sp: u16, // Stack pointer, points to the top of the stack
     pub bus: MemoryBus,
     pub ppu: Ppu,
     div_timer: u32,
@@ -83,7 +83,7 @@ impl Cpu {
 
     // Executes one CPU cycle. Reads and executes an instruction from the position of the pc and updates the pc
     // Returns the number of cycles performed
-    fn step(&mut self) -> u32 {
+    pub fn step(&mut self) -> u32 {
         let mut instruction_byte = self.read_next_byte();
         let prefixed = instruction_byte == 0xCB;
         if prefixed {
@@ -923,7 +923,14 @@ impl Cpu {
     */
     fn jump_relative(&mut self, jump_condition: JumpCondition) -> usize {
         let mut cycles = 8;
-        let relative_val = self.read_next_byte() as i8 as u16;
+        let relative_dest = self.read_next_byte();
+
+        // To clarify, an operand of 0 is equivalent to no jumping.
+        if relative_dest == 0 {
+            return cycles;
+        }
+
+        let relative_val = relative_dest as i8 as u16;
 
         let jump = match jump_condition {
             JumpCondition::NotZero => !self.registers.f.zero,
@@ -1362,3 +1369,4 @@ impl Default for Cpu {
         }
     }
 }
+
