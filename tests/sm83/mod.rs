@@ -5,6 +5,7 @@ use gameboy::cpu::Cpu;
 
 #[derive(Deserialize)]
 struct Test {
+    name: String,
     initial: State,
     r#final: State
 }
@@ -59,16 +60,16 @@ fn set_initial_state(cpu: &mut Cpu, test: &Test) {
 }
 
 fn verify(cpu: &Cpu, test: &Test) {
-    assert_eq!(cpu.pc, test.r#final.pc);
-    assert_eq!(cpu.sp, test.r#final.sp);
-    assert_eq!(cpu.registers.a, test.r#final.a);
-    assert_eq!(cpu.registers.b, test.r#final.b);
-    assert_eq!(cpu.registers.c, test.r#final.c);
-    assert_eq!(cpu.registers.d, test.r#final.d);
-    assert_eq!(cpu.registers.e, test.r#final.e);
-    assert_eq!(u8::from(cpu.registers.f), test.r#final.f);
-    assert_eq!(cpu.registers.h, test.r#final.h);
-    assert_eq!(cpu.registers.l, test.r#final.l);
+    assert_eq!(cpu.pc, test.r#final.pc, "test {}", test.name);
+    assert_eq!(cpu.sp, test.r#final.sp, "test {}", test.name);
+    assert_eq!(cpu.registers.a, test.r#final.a, "test {}", test.name);
+    assert_eq!(cpu.registers.b, test.r#final.b, "test {}", test.name);
+    assert_eq!(cpu.registers.c, test.r#final.c, "test {}", test.name);
+    assert_eq!(cpu.registers.d, test.r#final.d, "test {}", test.name);
+    assert_eq!(cpu.registers.e, test.r#final.e, "test {}", test.name);
+    assert_eq!(u8::from(cpu.registers.f), test.r#final.f, "test {}", test.name);
+    assert_eq!(cpu.registers.h, test.r#final.h, "test {}", test.name);
+    assert_eq!(cpu.registers.l, test.r#final.l, "test {}", test.name);
 
     let ram_values: Vec<(usize, u8)> = test.initial.ram
         .iter()
@@ -77,7 +78,7 @@ fn verify(cpu: &Cpu, test: &Test) {
 
     for (address, value) in ram_values {
         let ram_value = cpu.bus.read_byte(address);
-        assert_eq!(ram_value, value)
+        assert_eq!(ram_value, value, "test {}", test.name)
     }
 }
 

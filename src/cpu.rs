@@ -90,7 +90,6 @@ impl Cpu {
             instruction_byte = self.read_next_byte();
         }
 
-
         // Lookup and execute next instruction and return size of instruction in bytes and how many cycles it took to execute
         let cycles = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed) {
             self.instruction_history.push_front(format!("{:0>4X}: ${:0>2X}\t{:?}", self.pc, instruction_byte, instruction));

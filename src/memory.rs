@@ -106,42 +106,12 @@ impl MemoryBus {
     }
 
     pub fn read_byte(&self, address: usize) -> u8 {
-        // Gameboy doctor setup
-        if address == 0xff44 {
-            return 0x90
-        }
-
         self.base.borrow()[address]
     }
 
     pub fn write_byte(&mut self, address: usize, value: u8) {
-        match address {
-            0x0000..=0x1FFF => {},
-            0x2000..=0x3FFF => {
-                #[allow(clippy::single_match)] // Remove this later
-                match self.mbc_type {
-                    MBCType::MBC1 => {
-                        let mut bank_number = value & 0x1F;
-                        if vec!(0x00, 0x20, 0x40, 0x60).contains(&bank_number) {
-                            bank_number += 1;
-                        }
-
-                        // Replace memory with bank data
-                        let mut mem_ref = self.base.borrow_mut();
-                        for (i, b) in self.banks[bank_number as usize].iter().enumerate() {
-                            mem_ref[i] = *b;
-                        }
-                    },
-                    _ => {},
-                }
-            },
-            0x4000..=0x5FFF => {},
-            0x6000..=0x7FFF => {},
-            _ => {
-                let mut mem_ref = self.base.borrow_mut();
-                mem_ref[address] = value;
-            },
-        }
+        let mut mem_ref = self.base.borrow_mut();
+        mem_ref[address] = value;
     }
 
     // Returns the type of the cartridge. What type of MBC it uses.
