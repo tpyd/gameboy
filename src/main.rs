@@ -97,7 +97,7 @@ fn main() {
     tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
     background_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
-    let mut cpu = Cpu::with_rom("tests/blargg-test-roms/cpu_instrs/individual/07-jr,jp,call,ret,rst.gb");
+    let mut cpu = Cpu::with_rom("tests/blargg/07-jr,jp,call,ret,rst.gb");
     cpu.bus.read_cartridge_header();
     cpu.log_state();
 

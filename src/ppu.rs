@@ -53,7 +53,8 @@ impl Ppu {
                 self.update_tiledata(address);
                 //self.update_background(address);
             },
-            0x9800..=0x9FFF => self.update_background(address),
+            // Temporarily removed to run sm83 tests without issues
+            //0x9800..=0x9FFF => self.update_background(address),
             _ => {},
         }
     }

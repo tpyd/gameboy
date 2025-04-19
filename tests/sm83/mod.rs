@@ -71,7 +71,7 @@ fn verify(cpu: &Cpu, test: &Test) {
     assert_eq!(cpu.registers.h, test.r#final.h, "test {}", test.name);
     assert_eq!(cpu.registers.l, test.r#final.l, "test {}", test.name);
 
-    let ram_values: Vec<(usize, u8)> = test.initial.ram
+    let ram_values: Vec<(usize, u8)> = test.r#final.ram
         .iter()
         .map(|v| (v[0] as usize, v[1] as u8))
         .collect();
@@ -93,4 +93,5 @@ macro_rules! generate_tests {
 
 generate_tests!(noop, "tests/sm83/data/00.json");
 generate_tests!(ld_bc_u16, "tests/sm83/data/01.json");
+generate_tests!(ld_bc_a, "tests/sm83/data/02.json");
 
