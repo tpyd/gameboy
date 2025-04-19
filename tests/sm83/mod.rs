@@ -94,4 +94,17 @@ macro_rules! generate_tests {
 generate_tests!(noop, "tests/sm83/data/00.json");
 generate_tests!(ld_bc_u16, "tests/sm83/data/01.json");
 generate_tests!(ld_bc_a, "tests/sm83/data/02.json");
+generate_tests!(inc_bc, "tests/sm83/data/03.json");
+generate_tests!(inc_b, "tests/sm83/data/04.json");
+generate_tests!(dec_b, "tests/sm83/data/05.json");
+generate_tests!(ld_b_u8, "tests/sm83/data/06.json");
+generate_tests!(rlca, "tests/sm83/data/07.json");
+generate_tests!(ld_u16_sp, "tests/sm83/data/08.json");
+generate_tests!(add_hl_bc, "tests/sm83/data/09.json");
+generate_tests!(ld_a_bc, "tests/sm83/data/0a.json");
+generate_tests!(dec_bc, "tests/sm83/data/0b.json");
+generate_tests!(inc_c, "tests/sm83/data/0c.json");
+generate_tests!(dec_c, "tests/sm83/data/0d.json");
+generate_tests!(ld_c_u8, "tests/sm83/data/0e.json");
+generate_tests!(rrca, "tests/sm83/data/0f.json");
 

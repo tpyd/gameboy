@@ -129,7 +129,7 @@ impl Cpu {
         }
 
         self.update_timers(cycles);
-        self.log_state();
+        //self.log_state();
 
         cycles as u32
     }
@@ -676,7 +676,7 @@ impl Cpu {
         let mut cycles = 8;
         let mut source_value = match target {
             ByteTarget::A => { cycles = 4; self.registers.a },
-            ByteTarget::B => self.registers.b, // TODO definately make this into a method
+            ByteTarget::B => self.registers.b, // TODO definitely make this into a method
             ByteTarget::C => self.registers.c,
             ByteTarget::D => self.registers.d,
             ByteTarget::E => self.registers.e,
@@ -718,7 +718,7 @@ impl Cpu {
             _ => {},
         }
 
-        self.registers.f.zero = if carry { false } else { source_value == 0 };
+        self.registers.f.zero = if carry || target == ByteTarget::A { false } else { source_value == 0 };
         self.registers.f.subtract = false;
         self.registers.f.carry = c != 0;
         self.registers.f.half_carry = false;
@@ -991,6 +991,7 @@ impl Cpu {
                     LoadWordTarget::D16 => {
                         let word = self.read_next_word();
                         self.write_byte(word, (source_value & 0x00FF) as u8);
+                        self.write_byte(word + 1, (source_value >> 8) as u8);
                         cycles = 20
                     }
                 }

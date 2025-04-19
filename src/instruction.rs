@@ -72,7 +72,7 @@ pub enum Instruction {
 // HLI means value at the address pointed to by HL registers, D8 means next byte
 #[derive(Debug, Clone, Copy)] pub enum ArithmeticType { Byte(ByteTarget), Word(WordTarget), SP }
 
-#[derive(Debug, Clone, Copy)] pub enum ByteTarget { A, B, C, D, E, H, L, D8, HLI }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum ByteTarget { A, B, C, D, E, H, L, D8, HLI }
 #[derive(Debug, Clone, Copy)] pub enum WordTarget { BC, DE, HL, SP }
 
 #[derive(Debug, Clone, Copy)] pub enum JumpType { Word(JumpCondition), Address }
