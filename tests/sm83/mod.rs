@@ -108,3 +108,20 @@ generate_tests!(dec_c, "tests/sm83/data/0d.json");
 generate_tests!(ld_c_u8, "tests/sm83/data/0e.json");
 generate_tests!(rrca, "tests/sm83/data/0f.json");
 
+generate_tests!(stop, "tests/sm83/data/10.json");
+generate_tests!(ld_de_u16, "tests/sm83/data/11.json");
+generate_tests!(ld_de_a, "tests/sm83/data/12.json");
+generate_tests!(inc_de, "tests/sm83/data/13.json");
+generate_tests!(inc_d, "tests/sm83/data/14.json");
+generate_tests!(dec_d, "tests/sm83/data/15.json");
+generate_tests!(ld_d_u8, "tests/sm83/data/16.json");
+generate_tests!(rla, "tests/sm83/data/17.json");
+generate_tests!(jr_i8, "tests/sm83/data/18.json");
+generate_tests!(add_hl_de, "tests/sm83/data/19.json");
+generate_tests!(ld_a_de, "tests/sm83/data/1a.json");
+generate_tests!(dec_de, "tests/sm83/data/1b.json");
+generate_tests!(inc_e, "tests/sm83/data/1c.json");
+generate_tests!(dec_e, "tests/sm83/data/1d.json");
+generate_tests!(ld_e_u8, "tests/sm83/data/1e.json");
+generate_tests!(rra, "tests/sm83/data/1f.json");
+
