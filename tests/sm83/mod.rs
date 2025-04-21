@@ -60,16 +60,16 @@ fn set_initial_state(cpu: &mut Cpu, test: &Test) {
 }
 
 fn verify(cpu: &Cpu, test: &Test) {
-    assert_eq!(cpu.pc, test.r#final.pc, "test {}", test.name);
-    assert_eq!(cpu.sp, test.r#final.sp, "test {}", test.name);
-    assert_eq!(cpu.registers.a, test.r#final.a, "test {}", test.name);
-    assert_eq!(cpu.registers.b, test.r#final.b, "test {}", test.name);
-    assert_eq!(cpu.registers.c, test.r#final.c, "test {}", test.name);
-    assert_eq!(cpu.registers.d, test.r#final.d, "test {}", test.name);
-    assert_eq!(cpu.registers.e, test.r#final.e, "test {}", test.name);
-    assert_eq!(u8::from(cpu.registers.f), test.r#final.f, "test {}", test.name);
-    assert_eq!(cpu.registers.h, test.r#final.h, "test {}", test.name);
-    assert_eq!(cpu.registers.l, test.r#final.l, "test {}", test.name);
+    assert_eq!(cpu.pc, test.r#final.pc, "pc is incorrect - test {}", test.name);
+    assert_eq!(cpu.sp, test.r#final.sp, "sp is incorrecet - test {}", test.name);
+    assert_eq!(cpu.registers.a, test.r#final.a, "a register is incorrect - test {}", test.name);
+    assert_eq!(cpu.registers.b, test.r#final.b, "b register is incorrect - test {}", test.name);
+    assert_eq!(cpu.registers.c, test.r#final.c, "c register is incorrect - test {}", test.name);
+    assert_eq!(cpu.registers.d, test.r#final.d, "d register is incorrect - test {}", test.name);
+    assert_eq!(cpu.registers.e, test.r#final.e, "e register is incorrect - test {}", test.name);
+    assert_eq!(u8::from(cpu.registers.f), test.r#final.f, "flags register is incorrect - test {}", test.name);
+    assert_eq!(cpu.registers.h, test.r#final.h, "h register is incorrect test {}", test.name);
+    assert_eq!(cpu.registers.l, test.r#final.l, "l register is incorrect test {}", test.name);
 
     let ram_values: Vec<(usize, u8)> = test.r#final.ram
         .iter()
@@ -78,7 +78,7 @@ fn verify(cpu: &Cpu, test: &Test) {
 
     for (address, value) in ram_values {
         let ram_value = cpu.bus.read_byte(address);
-        assert_eq!(ram_value, value, "test {}", test.name)
+        assert_eq!(ram_value, value, "ram value is incorrect - test {}", test.name)
     }
 }
 
@@ -124,4 +124,21 @@ generate_tests!(inc_e, "tests/sm83/data/1c.json");
 generate_tests!(dec_e, "tests/sm83/data/1d.json");
 generate_tests!(ld_e_u8, "tests/sm83/data/1e.json");
 generate_tests!(rra, "tests/sm83/data/1f.json");
+
+generate_tests!(jr_nz_i8, "tests/sm83/data/20.json");
+generate_tests!(ld_hl_u16, "tests/sm83/data/21.json");
+generate_tests!(ld_hlp_a, "tests/sm83/data/22.json");
+generate_tests!(inc_hl, "tests/sm83/data/23.json");
+generate_tests!(inc_h, "tests/sm83/data/24.json");
+generate_tests!(dec_h, "tests/sm83/data/25.json");
+generate_tests!(ld_h_u8, "tests/sm83/data/26.json");
+generate_tests!(daa, "tests/sm83/data/27.json");
+generate_tests!(jr_z_i8, "tests/sm83/data/28.json");
+generate_tests!(add_hl_hl, "tests/sm83/data/29.json");
+generate_tests!(ld_a_hlp, "tests/sm83/data/2a.json");
+generate_tests!(dec_hl, "tests/sm83/data/2b.json");
+generate_tests!(inc_l, "tests/sm83/data/2c.json");
+generate_tests!(dec_l, "tests/sm83/data/2d.json");
+generate_tests!(ld_l_u8, "tests/sm83/data/2e.json");
+generate_tests!(cpl, "tests/sm83/data/2f.json");
 

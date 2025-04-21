@@ -1193,52 +1193,37 @@ impl Cpu {
 
     /*
         DAA instruction
-        Changes register A to contain a decimal number after an arithmetic operation.
+        Changes register A to contain a decimal number. Often after an arithmetic operation.
         For example: 15+27 = 3C, running DAA after changes it to 42.
     */
     fn daa(&mut self) -> usize {
-        let mut reg_a = self.registers.a;
+        let mut adjustment = 0;
 
-        if !self.registers.f.subtract {
-            // Lower nibble
-            if (reg_a & 0x0F) > 9 || self.registers.f.half_carry {
-                // larger than 9 means that it contains hex values (A, B, C...).
-                // Also have to add if lower nibble overflow occured.
-                // Add 6 to offset
-                reg_a = reg_a.wrapping_add(0x06);
+        if self.registers.f.subtract {
+            if self.registers.f.half_carry {
+                adjustment += 0x6;
             }
 
-            // Upper nibble
-            if (reg_a & 0xF0) > 0x90 || self.registers.f.carry {
-                reg_a = reg_a.wrapping_add(0x60);
+            if self.registers.f.carry {
+                adjustment += 0x60;
+            }
+
+            self.registers.a = self.registers.a.wrapping_sub(adjustment);
+        } else {
+            if self.registers.f.half_carry || self.registers.a & 0xF > 0x9 {
+                adjustment += 0x6;
+            }
+
+            if self.registers.f.carry || self.registers.a > 0x99 {
+                adjustment += 0x60;
                 self.registers.f.carry = true;
             }
-        } else {
-            // Same for subtraction, except we subtract 6
-            // Lower nibble
-            if (reg_a & 0x0F) > 0x09 || self.registers.f.half_carry {
-                reg_a = reg_a.wrapping_sub(0x06);
-                if (reg_a & 0xF0) == 0xF0 {
-                    // Set carry flag if underflow occured
-                    self.registers.f.carry = true;
-                }
-            }
 
-            // Upper nibble
-            if (reg_a & 0xF0) > 0x90 || self.registers.f.carry {
-                reg_a = reg_a.wrapping_sub(0x60);
-                self.registers.f.carry = true;
-            }
+            self.registers.a = self.registers.a.wrapping_add(adjustment);
         }
 
-        if reg_a == 0 {
-            self.registers.f.zero = true;
-        } else {
-            self.registers.f.zero = false;
-        }
-
+        self.registers.f.zero = self.registers.a == 0;
         self.registers.f.half_carry = false;
-        self.registers.a = reg_a;
 
         4
     }
@@ -1260,7 +1245,10 @@ impl Cpu {
      * Complements accumulator (A = ~A)
      */
     fn cpl(&mut self) -> usize {
-        self.registers.a = self.registers.a.wrapping_neg();
+        self.registers.a = !self.registers.a;
+        
+        self.registers.f.subtract = true;
+        self.registers.f.half_carry = true;
 
         4
     }
