@@ -94,7 +94,7 @@ pub enum LoadType {
 #[derive(Debug, Clone, Copy)] pub enum LoadByteSource { A, B, C, D, E, H, L, D8, HLI }
 #[derive(Debug, Clone, Copy)] pub enum LoadWordTarget { BC, DE, HL, SP, D16 }
 #[derive(Debug, Clone, Copy)] pub enum LoadWordSource { SP, D16 }
-#[derive(Debug, Clone, Copy)] pub enum LoadMemoryLocation { BC, DE, HLpostinc, HLpredec }
+#[derive(Debug, Clone, Copy)] pub enum LoadMemoryLocation { BC, DE, HLinc, HLdec }
 #[derive(Debug, Clone, Copy)] pub enum ByteAddress { C, D8, D16 }
 
 #[derive(Debug, Clone, Copy)] pub enum StackTarget { AF, BC, DE, HL }
@@ -134,8 +134,8 @@ impl Instruction {
             // Load instructions 8-bit
             0x02 => Some(Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::BC))),
             0x12 => Some(Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::DE))),
-            0x22 => Some(Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::HLpostinc))),
-            0x32 => Some(Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::HLpredec))),
+            0x22 => Some(Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::HLinc))),
+            0x32 => Some(Instruction::LD(LoadType::IndirectFromA(LoadMemoryLocation::HLdec))),
 
             0x06 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B, LoadByteSource::D8))),
             0x16 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::D, LoadByteSource::D8))),
@@ -144,8 +144,8 @@ impl Instruction {
 
             0x0A => Some(Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::BC))),
             0x1A => Some(Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::DE))),
-            0x2A => Some(Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::HLpostinc))),
-            0x3A => Some(Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::HLpredec))),
+            0x2A => Some(Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::HLinc))),
+            0x3A => Some(Instruction::LD(LoadType::AFromIndirect(LoadMemoryLocation::HLdec))),
 
             0x0E => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::D8))),
             0x1E => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::E, LoadByteSource::D8))),

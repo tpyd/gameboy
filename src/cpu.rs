@@ -395,13 +395,13 @@ impl Cpu {
             },
             ArithmeticType::Word(word_target) => {
                 cycles = 8;
-                let mut value: u16;
-                match word_target {
-                    WordTarget::BC => { value = self.registers.get_bc() },
-                    WordTarget::DE => { value = self.registers.get_de() },
-                    WordTarget::HL => { value = self.registers.get_hl() },
-                    WordTarget::SP => { value = self.registers.get_af() },
-                }
+                let mut value = match word_target {
+                    WordTarget::BC => self.registers.get_bc(),
+                    WordTarget::DE => self.registers.get_de(),
+                    WordTarget::HL => self.registers.get_hl(),
+                    WordTarget::SP => self.sp,
+                };
+
                 if add_carry { value += self.registers.f.carry as u16; }
                 let (new_value, did_overflow) = self.registers.get_hl().overflowing_add(value);
 
@@ -1001,14 +1001,15 @@ impl Cpu {
                 let source_value = match source {
                     LoadMemoryLocation::BC => self.read_byte(self.registers.get_bc()),
                     LoadMemoryLocation::DE => self.read_byte(self.registers.get_de()),
-                    LoadMemoryLocation::HLpostinc => {
+                    LoadMemoryLocation::HLinc => {
                         let value = self.read_byte(self.registers.get_hl());
                         self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
                         value
                     },
-                    LoadMemoryLocation::HLpredec => {
+                    LoadMemoryLocation::HLdec => {
+                        let value = self.read_byte(self.registers.get_hl());
                         self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
-                        self.read_byte(self.registers.get_hl())
+                        value
                     }
                 };
                 self.registers.a = source_value;
@@ -1019,13 +1020,13 @@ impl Cpu {
                 match target {
                     LoadMemoryLocation::BC => self.write_byte(self.registers.get_bc(), source_value),
                     LoadMemoryLocation::DE => self.write_byte(self.registers.get_de(), source_value),
-                    LoadMemoryLocation::HLpostinc => {
+                    LoadMemoryLocation::HLinc => {
                         self.write_byte(self.registers.get_hl(), source_value);
                         self.registers.set_hl(self.registers.get_hl().wrapping_add(1));
                     },
-                    LoadMemoryLocation::HLpredec => {
-                        self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
+                    LoadMemoryLocation::HLdec => {
                         self.write_byte(self.registers.get_hl(), source_value);
+                        self.registers.set_hl(self.registers.get_hl().wrapping_sub(1));
                     },
                 }
             },
