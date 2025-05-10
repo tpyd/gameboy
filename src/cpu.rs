@@ -452,10 +452,10 @@ impl Cpu {
         let mut half_carry = (source_value & 0x0F) > (self.registers.a & 0x0F);
 
         if carry {
-            let (sbc_value, did_overflow2) = self.registers.a.overflowing_sub(self.registers.f.carry as u8);
+            let (sbc_value, did_overflow2) = new_value.overflowing_sub(self.registers.f.carry as u8);
             new_value = sbc_value;
             did_overflow |= did_overflow2;
-            half_carry |= self.registers.f.carry as u8 > (self.registers.a & 0x0F);
+            half_carry = (source_value & 0x0F) + self.registers.f.carry as u8 > (self.registers.a & 0x0F);
         }
 
         // Carry bit is set if subtraction has to borrow
