@@ -1322,14 +1322,9 @@ impl Cpu {
     // Write value to memory
     fn write_byte(&mut self, address: u16, value: u8) {
         let address = address as usize;
-        match address {
-            // Writing to divider register resets it
-            0xff04 => self.reset_div(),
-            _ => {
-                self.bus.write_byte(address, value);
-                self.ppu.update(address);
-            },
-        }
+
+        self.bus.write_byte(address, value);
+        self.ppu.update(address);
     }
 }
 
