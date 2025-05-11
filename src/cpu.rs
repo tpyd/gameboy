@@ -674,9 +674,9 @@ impl Cpu {
      * Contains RL, RR, RLC, RLCA, RLA, RRC, RRCA and RRA
      * Rotates register left. Carry parameter specifies whether to rotate through carry or not
      */
-    fn rotate(&mut self, target: ByteTarget, carry: bool, left: bool, set_zero: bool) -> usize {
+    fn rotate(&mut self, target: ByteTarget, through_carry: bool, left: bool, set_zero: bool) -> usize {
         let mut cycles = 8;
-        let mut source_value = match target {
+        let source_value = match target {
             ByteTarget::A => { cycles = 4; self.registers.a },
             ByteTarget::B => self.registers.b,
             ByteTarget::C => self.registers.c,
@@ -688,41 +688,43 @@ impl Cpu {
             ByteTarget::D8 => panic!("Got invalid enum ByteTarget::D8 in rotate instruction"),
         };
 
-        let c: u8;
+        let mut new_value: u8;
+        let carry: u8;
+
         if left {
-            source_value = source_value.rotate_left(1);
-            c = source_value & 0x01;
+            new_value = source_value.rotate_left(1);
+            carry = new_value & 0x01;
         } else {
-            source_value = source_value.rotate_right(1);
-            c = source_value & 0x80;
+            new_value = source_value.rotate_right(1);
+            carry = new_value & 0x80;
         }
 
         // Set wrapped bit to carry if instruction is 'through carry'
-        if carry {
+        if through_carry {
             // Toggle the bit only if it's different from the carry flag
-            if left && source_value & 0x01 != self.registers.f.carry as u8 {
-                source_value ^= 0x01;
+            if left && new_value & 0x01 != self.registers.f.carry as u8 {
+                new_value ^= 0x01;
             }
-            if !left && source_value & 0x80 != (self.registers.f.carry as u8) << 7 {
-                source_value ^= 0x80;
+            if !left && new_value & 0x80 != (self.registers.f.carry as u8) << 7 {
+                new_value ^= 0x80;
             }
         }
 
         match target {
-            ByteTarget::A => self.registers.a = source_value, // TODO definately make this into a method
-            ByteTarget::B => self.registers.b = source_value,
-            ByteTarget::C => self.registers.c = source_value,
-            ByteTarget::D => self.registers.d = source_value,
-            ByteTarget::E => self.registers.e = source_value,
-            ByteTarget::H => self.registers.h = source_value,
-            ByteTarget::L => self.registers.l = source_value,
-            ByteTarget::HLI => self.write_byte(self.registers.get_hl(), source_value),
+            ByteTarget::A => self.registers.a = new_value,
+            ByteTarget::B => self.registers.b = new_value,
+            ByteTarget::C => self.registers.c = new_value,
+            ByteTarget::D => self.registers.d = new_value,
+            ByteTarget::E => self.registers.e = new_value,
+            ByteTarget::H => self.registers.h = new_value,
+            ByteTarget::L => self.registers.l = new_value,
+            ByteTarget::HLI => self.write_byte(self.registers.get_hl(), new_value),
             _ => {},
         }
 
-        self.registers.f.zero = if set_zero {source_value == 0 } else { false };
+        self.registers.f.zero = if set_zero { new_value == 0 } else { false };
         self.registers.f.subtract = false;
-        self.registers.f.carry = c != 0;
+        self.registers.f.carry = carry != 0;
         self.registers.f.half_carry = false;
 
         cycles
