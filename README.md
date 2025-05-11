@@ -10,17 +10,17 @@ There are the tests that the emulator successfully passes.
 
 | Test                  | Pass |
 | --                    | --   |
-| 01-special            | ❌ |
-| 02-interrupts         | ❌ |
-| 03-op sp,hl           | Does not end |
-| 04-op r,imm           | ✔ |
-| 05-op rp              | ✔ |
-| 06-ld r,r             | ✔ |
-| 07-jr,jp,call,ret,rst | Does not end |
-| 08-misc instrs        | Does not end |
-| 09-op r,r             | ✔ |
-| 10-bit ops            | ✔ |
-| 11-op a,(hl)          | ✔ |
+| 01-special            | ✔    |
+| 02-interrupts         | ❌   |
+| 03-op sp,hl           | ✔    | 
+| 04-op r,imm           | ✔    |
+| 05-op rp              | ✔    |
+| 06-ld r,r             | ✔    |
+| 07-jr,jp,call,ret,rst | ✔    |
+| 08-misc instrs        | ✔    |
+| 09-op r,r             | ✔    |
+| 10-bit ops            | ✔    |
+| 11-op a,(hl)          | ✔    |
 
 ## Resources
 https://gbdev.io/

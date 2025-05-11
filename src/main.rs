@@ -97,7 +97,17 @@ fn main() {
     tileset_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
     background_window.limit_update_rate(Some(std::time::Duration::from_micros(1667)));
 
-    let mut cpu = Cpu::with_rom("tests/blargg/07-jr,jp,call,ret,rst.gb");
+    let mut cpu = Cpu::with_rom("tests/blargg/01-special.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/02-interrupts.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/03-op sp,hl.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/04-op r,imm.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/05-op rp.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/06-ld r,r.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/07-jr,jp,call,ret,rst.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/08-misc instrs.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/09-op r,r.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/10-bit ops.gb");
+    // let mut cpu = Cpu::with_rom("tests/blargg/11-op a,(hl).gb");
     cpu.bus.read_cartridge_header();
     cpu.log_state();
 
