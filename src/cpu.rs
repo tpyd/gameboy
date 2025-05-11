@@ -310,15 +310,15 @@ impl Cpu {
             Instruction::CP(target) => self.cp(target),
 
             // These instructions are not prefixed and only takes 4 cycles, easier to return cycles here and send all to rotate method
-            Instruction::RLA => { self.rotate(ByteTarget::A, true, true); 4 },
-            Instruction::RLCA => { self.rotate(ByteTarget::A, false, true); 4 },
-            Instruction::RRA => { self.rotate(ByteTarget::A, true, false); 4 },
-            Instruction::RRCA => { self.rotate(ByteTarget::A, false, false); 4 },
+            Instruction::RLA => { self.rotate(ByteTarget::A, true, true, false); 4 },
+            Instruction::RLCA => { self.rotate(ByteTarget::A, false, true, false); 4 },
+            Instruction::RRA => { self.rotate(ByteTarget::A, true, false, false); 4 },
+            Instruction::RRCA => { self.rotate(ByteTarget::A, false, false, false); 4 },
 
-            Instruction::RLC(target) => self.rotate(target, false, true),
-            Instruction::RL(target) => self.rotate(target, true, true),
-            Instruction::RRC(target) => self.rotate(target, false, false),
-            Instruction::RR(target) => self.rotate(target, true, false),
+            Instruction::RLC(target) => self.rotate(target, false, true, true),
+            Instruction::RL(target) => self.rotate(target, true, true, true),
+            Instruction::RRC(target) => self.rotate(target, false, false, true),
+            Instruction::RR(target) => self.rotate(target, true, false, true),
             Instruction::SLA(target) => self.shift(target, true, false),
             Instruction::SRA(target) => self.shift(target, false, false),
             Instruction::SWAP(target) => self.swap(target),
@@ -674,11 +674,11 @@ impl Cpu {
      * Contains RL, RR, RLC, RLCA, RLA, RRC, RRCA and RRA
      * Rotates register left. Carry parameter specifies whether to rotate through carry or not
      */
-    fn rotate(&mut self, target: ByteTarget, carry: bool, left: bool) -> usize {
+    fn rotate(&mut self, target: ByteTarget, carry: bool, left: bool, set_zero: bool) -> usize {
         let mut cycles = 8;
         let mut source_value = match target {
             ByteTarget::A => { cycles = 4; self.registers.a },
-            ByteTarget::B => self.registers.b, // TODO definitely make this into a method
+            ByteTarget::B => self.registers.b,
             ByteTarget::C => self.registers.c,
             ByteTarget::D => self.registers.d,
             ByteTarget::E => self.registers.e,
@@ -720,7 +720,7 @@ impl Cpu {
             _ => {},
         }
 
-        self.registers.f.zero = if carry || target == ByteTarget::A { false } else { source_value == 0 };
+        self.registers.f.zero = if set_zero {source_value == 0 } else { false };
         self.registers.f.subtract = false;
         self.registers.f.carry = c != 0;
         self.registers.f.half_carry = false;
