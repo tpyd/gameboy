@@ -417,7 +417,9 @@ impl Cpu {
                 if add_carry { value += self.registers.f.carry as u16; }
                 let (new_value, _) = self.sp.overflowing_add(value);
 
-                // Instruction sets carry bit if overflow occured on bit 7, thus did_overflow can't be used here
+                // Instruction sets carry bit if overflow occured on bit 7, so did_overflow can't be used here
+                self.registers.f.zero = false;
+                self.registers.f.subtract = false;
                 self.registers.f.carry = (self.sp & 0x00FF) + (value & 0x00FF) > 0x00FF;
                 self.registers.f.half_carry = (self.sp & 0x000F) + (value & 0x000F) > 0x000F;
 
