@@ -28,9 +28,9 @@ struct State {
 fn test_instruction(file: &str) {
     let file = File::open(file).unwrap();
     let tests: Vec<Test> = serde_json::from_reader(file).unwrap();
+    let mut cpu = Cpu::default();
 
     for test in tests {
-        let mut cpu = Cpu::default();
         set_initial_state(&mut cpu, &test);
         cpu.step();
         verify(&cpu, &test);
