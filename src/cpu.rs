@@ -7,7 +7,6 @@ use crate::memory::MemoryBus;
 use crate::ppu::Ppu;
 use crate::interrupt::Interrupt;
 use crate::instruction::*;
-use crate::debug::Debugger;
 
 /*
     Implementation of the CPU LR35902
@@ -24,7 +23,6 @@ pub struct Cpu {
     is_halted: bool,
     ime: bool, // Interrupt Master Enable
     instruction_history: VecDeque<String>,
-    // debugger: Debugger,
     file: std::fs::File,
 }
 
@@ -35,12 +33,10 @@ impl Cpu {
         // Have to recreate Ppu as well to recreate memory reference properly
         let memory_bus = MemoryBus::new(Some(&path));
         let ppu = Ppu::new(memory_bus.get_mem_ref());
-        let debugger = Debugger::new(&path);
 
         Cpu {
             bus: memory_bus,
             ppu: ppu,
-            // debugger: debugger,
             ..Default::default()
         }
     }

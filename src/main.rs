@@ -10,7 +10,6 @@ mod ppu;
 mod register;
 mod utils;
 mod cpu;
-mod debug;
 use cpu::Cpu;
 
 use constant::*;

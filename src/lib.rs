@@ -6,4 +6,4 @@ mod ppu;
 mod register;
 mod utils;
 pub mod cpu;
-mod debug;
+

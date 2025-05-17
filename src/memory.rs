@@ -24,8 +24,8 @@ enum MBCType {
 */
 pub struct MemoryBus {
     pub base: Rc<RefCell<[u8; 0x10000]>>, // TODO make field private
-    mbc_type: MBCType,
-    banks: Vec<[u8; 0x4000]>,
+    // mbc_type: MBCType,
+    // banks: Vec<[u8; 0x4000]>,
 }
 
 impl MemoryBus {
@@ -70,8 +70,8 @@ impl MemoryBus {
 
         let mut mem = MemoryBus {
             base: Rc::new(RefCell::new(memory_base)),
-            mbc_type: mbc_type,
-            banks: memory_banks,
+            // mbc_type: mbc_type,
+            // banks: memory_banks,
         };
 
         // Initial memory values. See https://gbdev.io/pandocs/#power-up-sequence
