@@ -1,13 +1,11 @@
 # A Gameboy emulator written in Rust
 
-## About
-This project is mainly for educational purposes.
-
-To initialize submodules, clone using `--recurse-submodules`, or run the command `git submodule update --init` after cloning.
+This project is primarily for educational purposes.
 
 # Status
-There are the tests that the emulator successfully passes.
+These are the tests that the emulator successfully passes.
 
+## Blargg
 | Test                  | Pass |
 | --                    | --   |
 | 01-special            | ✔    |
@@ -22,10 +20,13 @@ There are the tests that the emulator successfully passes.
 | 10-bit ops            | ✔    |
 | 11-op a,(hl)          | ✔    |
 
+## JSMoo-based SM83 JSON tests
+All tests passes ✔
+
 ## Resources
 https://gbdev.io/
 
 Opcodes table: https://izik1.github.io/gbops/
 
-Instructions with flag behaviour: https://rgbds.gbdev.io/docs/v0.5.2/gbz80.7/
+Instructions with flag behaviour: https://rgbds.gbdev.io/docs/v0.9.1/gbz80.7
 
